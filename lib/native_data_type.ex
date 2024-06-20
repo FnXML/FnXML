@@ -46,14 +46,24 @@ defmodule XMLStreamTools.NativeDataType do
   any other keys will be used as elements
   """
 
-  def encode(map, opts \\ [])
-  def encode(nil, opts), do: encode(%{}, opts)
-  def encode(list, opts) when is_list(list), do: Enum.reduce(list, [], fn map, acc -> acc ++ encode(map, opts) end)
-  def encode(map, opts) when is_map(map) do
-    module = Keyword.get(opts, :ops_module, NDT.OpsDefault)
+  def new_encoder(opts \\ []) do
+    %{
+      ops_module: Keyword.get(opts, :ops_module, NDT.OpsDefault),
+      formatter: Keyword.get(opts, :formatter, XMLStream.FormatterDefault)
+    }
+    encode_fun = fn encoder, map -> encode(encoder, map, opts) end
+    fn map -> encode_fun.(encode_fun, map) end
+  end
+  
+  def encode(encoder, map, opts)
+  def encode(encoder, nil, opts), do: encode(encoder, %{}, opts)
+  def encode(encoder, list, opts) when is_list(list), do: Enum.reduce(list, [], fn map, acc -> acc ++ encode(encoder, map, opts) end)
+  def encode(encoder, map, opts) when is_map(map) do
+    encoder = Keyword.get(opts, :ops_module, NDT.OpsDefault)
     formatter = Keyword.get(opts, :formatter, XMLStream.FormatterDefault)
-    meta = module.meta(map, opts)
-    formatter.emit(meta, map)
+    encoder.meta(map, opts)
+    |> IO.inspect(label: "meta")
+    |> formatter.emit()
   end
   def encode(value, opts), do: encode(%{value: to_string(value)}, [{:text, fn map, _ -> map[:value] end} | opts])
   

@@ -1,4 +1,7 @@
 defmodule XMLStreamTools.ToMap do
+  @moduledoc """
+  
+  """
   def to_map_fn(opts \\ []) do
     fn element, path, acc -> xml_map(element, path, acc, opts |> valid_opts()) end
   end
