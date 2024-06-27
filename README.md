@@ -3,6 +3,7 @@
 This is an Elixir library of tools for manipulate XML with using Streams.  It also provides a way to encode/decode
 "Native Data Structures" to/from an XML Stream.
 
+```
  ----------------   ----------------
 | Encoder        | | Decoder        |
  ----------------   ----------------
@@ -12,7 +13,7 @@ This is an Elixir library of tools for manipulate XML with using Streams.  It al
  -------------------------------------------------------------------------
 |                               XML Stream                                |
  -------------------------------------------------------------------------
-
+```
 
 # What is an XML Stream?
 
@@ -32,7 +33,7 @@ as they were encountered in the XML string/file.
 
 ## Example:
 
-```
+```xml
   <demo:root type="info">
     <description>some descriptive text</description>
     <address>
@@ -48,7 +49,7 @@ as they were encountered in the XML string/file.
 XML Stream Tools has a parser which can parse this XML and emit it to a Stream like:
 (location data is omitted to simplify the example)
 
-```
+```elixir
 [
   {:open_tag, [tag: "root", namespace: "demo", attr: [{"type", "info"}]},
   {:open_tag, [tag: "description"]},
@@ -92,7 +93,7 @@ XMLStreamTools.NativeDataStruct.encode(address, [tag: "address"])
 ```
 
 which would result in a list like:
-```
+```elixir
 [
   {:open_tag, [tag: "address"},
   {:open_tag, [tag: "name"},
@@ -138,6 +139,7 @@ address
     <state>MN</state>
     <zip>55731<zip>
 </address>
+"""
 ```
 
 The XML Stream could also be converted back to the same or a different Native Data Structure.
@@ -148,9 +150,9 @@ address |> XMLStreamTools.NativeDataType.decode(%Address{})
 %Address{name: "John Doe", street: "42 Main St.", city: "Ely", state: "MN", zip: 55731}
 ```    
 
-(Disclaimer) A work in progress, don't bet your business on it.
+(Disclaimer) This is very Alpha software at the moment, and definitely a work in progress, don't bet your business on it.
 
-Tools:
+Implemented Tools:
 
 - a NimbleParsec XML parser
 - a transformer - this can be used to take the stream of XML elements and output another stream of
@@ -162,6 +164,9 @@ Tools:
   XML to a Map.  New implementations of this behaviour can be defined to change how the XML is
   converted.  For example if your XML lends itself to going into an Explorer structure, that
   is possible to create with the Formatter.
+
+ToDo:
+
 
 ## Contributions
 
