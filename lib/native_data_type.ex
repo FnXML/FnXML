@@ -3,8 +3,8 @@ defmodule XMLStreamTools.NativeDataType do
   alias XMLStreamTools.NativeDataType, as: NDT
   alias XMLstringTools.XMLStream, as: XMLStream
   
-  @doc """
-  Converts a native data type (NDT) such as a list or map to an XML representation.
+  @moduledoc """
+  Converts a native data type (NDT) such as a list or map to an XMLStream representation and vice-versa.
 
   opts:
 
@@ -46,17 +46,37 @@ defmodule XMLStreamTools.NativeDataType do
   any other keys will be used as elements
   """
 
+  @doc """
+  convert native data type to an XMLStream representation
+
+  ## Examples
+
+      iex> data = %{"a" => "hi", "b" => %{a: 1, b: 1}, c: "hi", d: 4}
+      iex> XMLStreamTools.NativeDataType.encode(data, [])
+      [
+        open_tag: [tag: "undef", attr: [c: "hi", d: 4]],
+        text: ["hi"],
+        open_tag: [tag: "b", attr: [a: 1, b: 1]],
+        text: ["info"],
+        close_tag: [tag: "b"],
+        close_tag: [tag: "undef"]
+      ]
+  """
   def encode(map, opts)
   def encode(nil, opts), do: encode(%{}, opts)
   def encode(list, opts) when is_list(list), do: Enum.reduce(list, [], fn map, acc -> acc ++ encode(map, opts) end)
   def encode(map, opts) when is_map(map) do
-    encoder = Keyword.get(opts, :ops_module, NDT.OpsDefault)
+    encoder = Keyword.get(opts, :encoder_module, NDT.EncoderDefault)
     formatter = Keyword.get(opts, :formatter, XMLStream.FormatterDefault)
     encoder.meta(map, opts)
     |> IO.inspect(label: "meta")
     |> formatter.emit()
   end
   def encode(value, opts), do: encode(%{value: to_string(value)}, [{:text, fn map, _ -> map[:value] end} | opts])
+
+  def decode(xml_stream, opts)
+  def decode(nil, opts), do: decode([], opts)
+  
   
   def to_xml_stream(map, opts \\ [])
   def to_xml_stream(nil, opts), do: to_xml_stream(%{}, opts)

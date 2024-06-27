@@ -1,6 +1,26 @@
 defmodule XMLStreamTools.NativeDataType.MetaDefault do
   @moduledoc """
-  This Module is used to encode a Native Data Type (NDT) to an XML stream.
+  This Module is used to convert a Native Data Type (NDT) to a NDT Meta type, which can then be used
+  to encode the NDT to an XML stream.
+
+  So this module is used in conjunction with the NativeDataType.Formatter to convert it to an XML stream.
+
+  An encoder takes a native type like a map, and encodes it as a %NDT_Meta{} struct.  This provides all
+  the data needed to make the XML stream.  The formatter then takes the %NDT_Meta{} struct and converts it to an XML stream.
+
+  # Example:
+
+      iex> alias XMLStreamTools.NativeDataType.FormatterDefault, as: NDT_FormatterDefault
+      iex> data = %{"a" => "hi", "b" => %{a: 1, b: 1}, c: "hi", d: 4}
+      iex> NDT_MetaDefault.meta(data, [tag_from_parent: "foo"])
+      iex> |> NDT_FormatterDefault.emit()
+      [
+        open_tag: [tag: "foo", attr: [c: "hi", d: 4]],
+        text: ["hi"],
+        open_tag: [tag: "b", attr: [a: 1, b: 1]],
+        close_tag: [tag: "b"],
+        close_tag: [tag: "foo"]
+      ]
   """
   alias XMLStreamTools.NativeDataType.Meta, as: NDT_Meta
   

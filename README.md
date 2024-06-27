@@ -1,6 +1,152 @@
 # XML Stream Tools
 
-This is an Elixir library of tools for manipulate XML with using Streams.
+This is an Elixir library of tools for manipulate XML with using Streams.  It also provides a way to encode/decode
+"Native Data Structures" to/from an XML Stream.
+
+ ----------------   ----------------
+| Encoder        | | Decoder        |
+ ----------------   ----------------
+ -----------------------------------   -----------------  ----------------
+|  Native Data Structures           | | XML Parser     | | XML Formatter  |
+ -----------------------------------   -----------------  ----------------
+ -------------------------------------------------------------------------
+|                               XML Stream                                |
+ -------------------------------------------------------------------------
+
+
+# What is an XML Stream?
+
+XML is difficult to stream as it is defined.  This is because valid
+XML must end with a valid end tag to be correct.  Consequently in
+order to ensure that the XML expression is valid the entire XML must
+be consumed.  XML with a root tag, that contains 10Tb of data cannot
+be confirmed to be correct unless the entire 10Tb is parsed.  This is
+inconvenient.
+
+This module makes one little assumption, and that is that the XML is
+already correct, so we won't worry about that part.
+
+This frees us to consume XML differently.  These tools treat XML as a
+list of open, text, and close elements, which represent the elements
+as they were encountered in the XML string/file.
+
+## Example:
+
+```
+  <demo:root type="info">
+    <description>some descriptive text</description>
+    <address>
+      <name>John Doe</name>
+      <street>42 Main St.</street>
+      <city>Ely</city>
+      <state>MN</state>
+      <zip>55731<zip>
+    </address>
+  </demo:root>
+```
+
+XML Stream Tools has a parser which can parse this XML and emit it to a Stream like:
+(location data is omitted to simplify the example)
+
+```
+[
+  {:open_tag, [tag: "root", namespace: "demo", attr: [{"type", "info"}]},
+  {:open_tag, [tag: "description"]},
+  {:text, ["some descriptive text"]},
+  {:close_tag, [tag: "description"]},
+  {:open_tag, [tag: "address"},
+  {:open_tag, [tag: "name"},
+  {:text, ["John Doe"]},
+  {:close_tag, [tag: "name"},
+  {:open_tag, [tag: "street"},
+  {:text, ["42 Main St."]
+
+   ...
+
+  {:close_tag, [tag: "zip"]},
+  {:close_tag, [tag: "address"]},
+  {:close_tag, [tag: "root", namespace: "demo"]}
+]
+```
+
+In this format elements of the XML become a stream of XML parts, which
+could be operated on and transformed through a stream.
+
+Once in this format existing tools can be used to operate on the
+stream, such as filter elements, convert it back to XML, format the
+XML.
+
+Additionally there are tools which can be used to take an "Native Data
+Structure" and convert it to the XML Stream format.
+
+## Example:
+
+```elixir
+defmodule Address
+  defstruct [:name, :street, :city, :state, :zip]
+end
+
+address = %Address{name: "John Doe", street: "42 Main St.", city: "Ely", state: "MN", zip: 55731}
+
+XMLStreamTools.NativeDataStruct.encode(address, [tag: "address"])
+```
+
+which would result in a list like:
+```
+[
+  {:open_tag, [tag: "address"},
+  {:open_tag, [tag: "name"},
+  {:text, ["John Doe"]},
+  {:close_tag, [tag: "name"},
+  {:open_tag, [tag: "street"},
+  {:text, ["42 Main St."]
+  {:close_tag, [tag: "street"},
+  {:open_tag, [tag: "city"},
+  {:text, ["Ely"]
+  {:close_tag, [tag: "city"},
+  {:open_tag, [tag: "state"},
+  {:text, ["MN"]
+  {:close_tag, [tag: "state"},
+  {:open_tag, [tag: "zip"},
+  {:text, ["55731"]
+  {:close_tag, [tag: "zip"},
+  {:close_tag, [tag: "address"},
+]
+```
+
+From there it could be passed to several different tools:
+
+XML Format:
+```elixir
+address
+|> XMLStreamTools.XMLStream.Format()
+
+"<address><name>John Doe</name><street>42 Main St.</street><city>Ely</city><state>MN</state><zip>55731<zip><address>"
+```
+
+or:
+
+```elixir
+address
+|> XMLStreamTools.XMLStream.Format(pretty: true, indent: 4)
+
+"""
+<address>
+    <name>John Doe</name>
+    <street>42 Main St.</street>
+    <city>Ely</city>
+    <state>MN</state>
+    <zip>55731<zip>
+</address>
+```
+
+The XML Stream could also be converted back to the same or a different Native Data Structure.
+
+```elixir
+address |> XMLStreamTools.NativeDataType.decode(%Address{})
+
+%Address{name: "John Doe", street: "42 Main St.", city: "Ely", state: "MN", zip: 55731}
+```    
 
 (Disclaimer) A work in progress, don't bet your business on it.
 
