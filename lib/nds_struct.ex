@@ -29,6 +29,7 @@ defmodule FnXML.Stream.NativeDataStruct.Format.Struct do
   matches a field in the meta data.  If there is a 1 to 1
   correspondence, then the tag_map is not needed.
 
+  ## Examples - see `nds_struct_test.exs`
   """
   @impl NDS.Formatter
   def emit(meta, struct, opts \\ [])
@@ -56,4 +57,3 @@ defmodule FnXML.Stream.NativeDataStruct.Format.Struct do
   def get_value(_, data) when not is_nil(data), do: data
   def get_value(_, _), do: nil
 end
-#
