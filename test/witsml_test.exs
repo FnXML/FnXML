@@ -1,3 +1,7 @@
+defmodule WMLS do
+  defstruct [:type_in, :query_in, :options_in]
+end
+
 defmodule WITSML_Test do
   use ExUnit.Case
 
@@ -34,7 +38,16 @@ defmodule WITSML_Test do
       IO.puts("")
       IO.puts("#{FnXML.Stream.to_xml(result, pretty: true) |> Enum.join()}")
 
-      NDS.DecoderDefault.decode(result, [])
+      NDS.decode(result, formatter: NDS.Format.Struct, struct_id: WMLS, tag_map: %{
+            type_in: fn meta -> meta.child_list["WMLtypeIn"].data["text"] end,
+            query_in: fn meta -> meta.child_list["QueryIn"].data["text"] end,
+            options_in: fn meta ->
+              meta.child_list["OptionsIn"].data["text"]
+              |> String.split(",")
+              |> Enum.map(fn x -> String.split(x, "=") |> List.to_tuple() end)
+              |> Enum.into(%{})
+            end
+      })
       |> Enum.map(fn x -> x end)
       |> IO.inspect()
     end

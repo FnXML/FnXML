@@ -83,5 +83,11 @@ defmodule FnXML.Stream.NativeDataStruct do
   convert native data type to a map representation
   """
   def decode(xml_stream, opts)
-  def decode(nil, opts), do: decode([], opts)
+  def decode(xml_stream, opts) do
+    decoder = Keyword.get(opts, :decoder, NDS.DecoderDefault)
+    formatter = Keyword.get(opts, :formatter, NDS.Format.Map)
+    decoder.decode(xml_stream, opts)
+    |> Enum.map(fn x -> x end)
+    |> formatter.emit(opts)
+  end
 end

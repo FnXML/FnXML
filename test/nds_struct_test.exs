@@ -19,9 +19,9 @@ defmodule FnXML.Stream.NativeDataStruct.Format.StructTest do
 
     tag_map = %{
       a: "a",
-      b: fn meta -> NDS.Format.Struct.emit(meta.child_list["b"], NDS_SubTest, tag_map: %{info: "info"}) end
+      b: fn meta -> NDS.Format.Struct.emit(meta.child_list["b"], struct_id: NDS_SubTest, tag_map: %{info: "info"}) end
     }
-    assert NDS.Format.Struct.emit(meta, NDS_Test, tag_map: tag_map) == %NDS_Test{
+    assert NDS.Format.Struct.emit(meta, struct_id: NDS_Test, tag_map: tag_map) == %NDS_Test{
       a: "hi", c: "hi", d: 4,
       b: %NDS_SubTest{ info: "info", a: 1, b: 1 }
     }
