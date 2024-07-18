@@ -23,20 +23,30 @@ defmodule FnXML.Stream.NativeDataStruct.Format.MapTest do
 
   def apply_test(xml, data, opts \\ [])
   def apply_test(xml, data, opts) do
-    parsed_data =
-      FnXML.Parser.parse(xml)
-      |> Enum.map(fn x -> x end)
-      |> NDS.decode(opts)
-      |> Enum.at(0)
+    parsed_data = FnXML.Map.decode(xml, opts) |> Enum.at(0)
+
     assert parsed_data == data
 
     key = Map.keys(parsed_data) |> Enum.at(0)
-    encoded_data =
-      NDS.encode(parsed_data[key], tag_from_parent: key)
-      |> FnXML.Stream.to_xml([])
-      |> Enum.join()
+    encoded_data = FnXML.Map.encode(parsed_data[key], tag_from_parent: key)
     assert encoded_data == xml
   end
+
+  # def apply_test(xml, data, opts) do
+  #   parsed_data =
+  #     FnXML.Parser.parse(xml)
+  #     |> Enum.map(fn x -> x end)
+  #     |> NDS.decode(opts)
+  #     |> Enum.at(0)
+  #   assert parsed_data == data
+
+  #   key = Map.keys(parsed_data) |> Enum.at(0)
+  #   encoded_data =
+  #     NDS.encode(parsed_data[key], tag_from_parent: key)
+  #     |> FnXML.Stream.to_xml([])
+  #     |> Enum.join()
+  #   assert encoded_data == xml
+  # end
 
   def no_meta(_), do: %{}
   def ns_only_meta(%NDS{namespace: ns}) do
