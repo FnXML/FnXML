@@ -211,6 +211,9 @@ defmodule FnXML.Stream.NativeDataStruct.EncoderDefault do
   def encode_child(nds, key, child) when is_map(child) do
     {key, encode(child, [{:tag_from_parent, key} | nds.private[:opts] || []] |> propagate_opts())}
   end
+  def encode_child(nds, key, child) when is_binary(child) do
+    {key, encode(%{"text" => child}, [{:tag_from_parent, key} | nds.private[:opts] || []] |> propagate_opts())}
+  end
 
   def propagate_opts(opts) do
     Enum.filter(opts, fn {k, v} -> is_function(v) or k in [:tag_from_parent, :encoder_meta] end)
