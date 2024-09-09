@@ -1,9 +1,14 @@
+defmodule FnXML.Stream.Exception do
+  defexception message: "Invalid XML stream"
+end
+
 defmodule FnXML.Stream do
 
   @moduledoc """
   This module provides functions for transforming a stream of XML elements.
   """
 
+  alias FnXML.Element
 
   @doc """
   Format the XML Stream into a string.
@@ -15,9 +20,9 @@ defmodule FnXML.Stream do
   ## Example
 
       iex> [
-      iex>   {:open_tag, [tag: "foo", namespace: "fizz", attr_list: [{"a", "1"}]]},
+      iex>   {:open, [tag: "foo", namespace: "fizz", attributes: [{"a", "1"}]]},
       iex>   {:text, ["hello"]},
-      iex>   {:close_tag, [tag: "foo", namespace: "fizz"]}
+      iex>   {:close, [tag: "foo", namespace: "fizz"]}
       iex> ]
       iex> |> FnXML.Stream.to_xml()
       iex> |> Enum.join()
@@ -43,13 +48,11 @@ defmodule FnXML.Stream do
     end
   end
 
-  defp format_element({:open_tag, parts}, path, _acc) do
-    tag = Keyword.get(parts, :tag)
-    ns = Keyword.get(parts, :namespace)
-    ns = if ns, do: "#{ns}:", else: ""
-    close = if Keyword.get(parts, :close, false), do: "/", else: ""
+  defp format_element({:open, parts}, path, _acc) do
+    tag = Element.tag(parts) |> Element.tag_name()
+    close = %{true: "/", false: ""}[Element.close?(parts)]
     attrs =
-      Keyword.get(parts, :attr_list, [])
+      Element.attributes(parts)
       |> Enum.map(fn {k, v} -> "#{k}=\"#{v}\"" end)
       |> Enum.join(" ")
       |> fn
@@ -57,17 +60,15 @@ defmodule FnXML.Stream do
         x -> " " <> x
       end.()
 
-    { length(path) - 1, "<#{ns}#{tag}#{attrs}#{close}>" }
+    { length(path) - 1, "<#{tag}#{attrs}#{close}>" }
   end
 
   defp format_element({:text, [text | _]}, path, _acc), do: { length(path), text }
 
-  defp format_element({:close_tag, parts}, path, _acc) do
-    tag = Keyword.get(parts, :tag)
-    ns = Keyword.get(parts, :namespace)
-    ns = if ns, do: "#{ns}:", else: ""
+  defp format_element({:close, parts}, path, _acc) do
+    tag = Element.tag(parts) |> Element.tag_name()
 
-    { length(path) - 1, "</#{ns}#{tag}>" }
+    { length(path) - 1, "</#{tag}>" }
   end
 
   @doc """
@@ -77,8 +78,8 @@ defmodule FnXML.Stream do
 
   fun:
       a function that takes three arguments:
-          - element: the current element, ex: {:open_tag, %{tag: "foo"}}
-          - stack: the current stack of open tags (the path), ex: [ "bar", "foo" ]
+          - element: the current element, ex: {:open, %{tag: "foo"}}
+          - stack: the current stack of open tags (the path), ex: [ {"bar", ""}, {"foo", ""} ]
           - the current accumulator
       this function should return:
           - the new accumulator or {element to emit, new accumulator}
@@ -87,7 +88,9 @@ defmodule FnXML.Stream do
 
           if {:a, [:b]} is returned, the process emits :a, and continues with the accumulator as [:b]
 
-       See XMLStreamTools.Inspector for an example of how to use this module.
+  Note the stack is a list of tuples, where the first element is the tag name and the second element is the namespace.
+
+  See XMLStreamTools.Inspector for an example of how to use this module.
   """
   def transform(stream, acc \\ [], fun) do
     stream
@@ -96,37 +99,36 @@ defmodule FnXML.Stream do
 
   defp initial_acc(acc, fun), do: {[], acc, fun}
 
-  defp process_item({:open_tag, parts} = element, {stack, acc, fun}) do
-    tag = Keyword.get(parts, :tag)
-    close = Keyword.get(parts, :close, false)
+  defp process_item({:open, parts} = element, {stack, acc, fun}) do
+    tag = Element.tag(parts)
+    new_stack = [tag | stack]
 
-    fun.(element, [tag | stack], acc)
-    |> next((if close, do: stack, else: [tag | stack]), fun)
+    fun.(element, new_stack, acc) |> next(new_stack, fun)
   end
 
+  defp process_item({:text, _} = element, {[], _, _}) do
+    error(element, "Text element outside of a tag, a root elment is required")
+  end
   defp process_item({:text, _} = element, {stack, acc, fun}) do
-    fun.(element, stack, acc)
-    |> next(stack, fun)
+    fun.(element, stack, acc) |> next(stack, fun)
   end
 
-  defp process_item({:close_tag, parts} = element, {[head | stack] = pre_stack, acc, fun}) do
-    tag = Keyword.get(parts, :tag)
-    ["-#{head}-" | stack]
+  defp process_item({:close, parts} = element, {[], _, _}) do
+    error(element, "unexpected close tag #{Element.tag(parts) |> Element.tag_name()}, missing open tag")
+  end
+  defp process_item({:close, parts} = element, {[head | new_stack] = stack, acc, fun}) do
+    tag = Element.tag(parts)
     cond do
       tag == head ->
-        fun.(element, pre_stack, acc)
-        |> next(stack, fun)
+        fun.(element, stack, acc) |> next(new_stack, fun)
 
       tag != head ->
-        error(element, "mis-matched close tag #{inspect(tag)}, expecting: #{head}")
-
-      [] == pre_stack ->
-        error(element, "unmatched close tag #{inspect(tag)}")
+        error(element, "mis-matched close tag #{inspect(tag)}, expecting: #{Element.tag_name(head)}")
     end
   end
 
   defp process_item(element, {_, _, _}),
-    do: error(element, "unexpected element: #{inspect(element)}")
+    do: error(element, "invalid element: #{inspect(element)}")
 
   defp next({element, acc}, stack, fun), do: {:cont, element, {stack, acc, fun}}
   defp next(acc, stack, fun), do: {:cont, {stack, acc, fun}}
@@ -135,10 +137,10 @@ defmodule FnXML.Stream do
   defp after_fn(acc), do: {:cont, acc}
 
   defp error(element, msg) do
-    {{line, line_start}, abs_pos} = element |> elem(1) |> Keyword.get(:loc)
-    loc = "line: #{line}, char: #{abs_pos - line_start}"
-    raise "Error #{loc}: #{msg}"
+    {line, char} = Element.position(element)
+    raise FnXML.Stream.Exception, message: "Error (line: #{line}, char: #{char}) #{msg}"
   end
+
 
   @doc """
   Tap into a stream of XML elements.  The defult function displays each Stream element to
@@ -153,7 +155,7 @@ defmodule FnXML.Stream do
 
   if fun is nil, the default function will display each element to the console.
   otherwise fun must be a function that takes two arguments:
-    - element: the current element, ex: {:open_tag, %{tag: "foo"}}
+    - element: the current element, ex: {:open, %{tag: "foo"}}
     - path: the current stack of open tags (the path), ex: [ "bar", "foo" ], where "foo" is the parent of "bar"
 
   The return value of the fun is discarded, and has no effect on the stream.  With tap, there is no way to modify the stream.
@@ -177,18 +179,18 @@ defmodule FnXML.Stream do
     iex> FnXML.Parser.parse("<foo>with loc meta</foo>")
     iex> |> Enum.map(fn x -> x end)
     [
-      open_tag: [{:tag, "foo"}, {:loc, {{1, 0}, 1}}],
+      open: [{:tag, "foo"}, {:loc, {{1, 0}, 1}}],
       text: ["with loc meta", {:loc, {{1, 0}, 18}}],
-      close_tag: [{:tag, "foo"}, {:loc, {{1, 0}, 20}}]
+      close: [{:tag, "foo"}, {:loc, {{1, 0}, 20}}]
     ]  
 
     iex> FnXML.Parser.parse("<foo>no loc meta</foo>")
     iex> |> FnXML.Stream.strip_location_meta()
     iex> |> Enum.map(fn x -> x end)
     [
-      {:open_tag, [tag: "foo"]},
+      {:open, [tag: "foo"]},
       {:text, ["no loc meta"]},
-      {:close_tag, [tag: "foo"]}
+      {:close, [tag: "foo"]}
     ]  
   
   """
@@ -202,7 +204,7 @@ defmodule FnXML.Stream do
   arguments:
     - stream: the stream to filter
     - fun: a function that takes two arguments:
-      - element: the current element, ex: {:open_tag, %{tag: "foo"}}
+      - element: the current element, ex: {:open, %{tag: "foo"}}
       - path: the current stack of open tags (the path), ex: [ "bar", "foo" ], where "foo" is the parent of "bar"
       - acc: an accumulator which can be used to keep state between invocations.
 
@@ -213,15 +215,15 @@ defmodule FnXML.Stream do
   ## Example
 
     iex> stream = FnXML.Parser.parse("<foo><bar>1</bar><bar>2</bar></foo>")
-    iex> FnXML.Stream.filter(stream, fn _, [tag | _], _ -> {tag == "bar", []} end)
+    iex> FnXML.Stream.filter(stream, fn _, [{tag, ""} | _], _ -> {tag == "bar", []} end)
     iex> |> Enum.map(fn x -> x end)
     [
-      {:open_tag, [tag: "bar", loc: {{1, 0}, 6}]},
+      {:open, [tag: "bar", loc: {{1, 0}, 6}]},
       {:text, ["1", {:loc, {{1, 0}, 11}}]},
-      {:close_tag, [tag: "bar", loc: {{1, 0}, 13}]},
-      {:open_tag, [tag: "bar", loc: {{1, 0}, 18}]},
+      {:close, [tag: "bar", loc: {{1, 0}, 13}]},
+      {:open, [tag: "bar", loc: {{1, 0}, 18}]},
       {:text, ["2", {:loc, {{1, 0}, 23}}]},
-      {:close_tag, [tag: "bar", loc: {{1, 0}, 25}]}
+      {:close, [tag: "bar", loc: {{1, 0}, 25}]}
     ]  
   """
   def filter(stream, fun, acc \\ []) do
@@ -255,12 +257,12 @@ defmodule FnXML.Stream do
     include = Keyword.get(opts, :include, not exclude)
     
     filter(stream, fn
-      {:open_tag, meta}, _, acc ->
+      {:open, meta}, _, acc ->
         ns = Keyword.get(meta, :namespace)
         result = if ns in ns_list, do: include, else: not include
         {result, [result | acc]}
       {:text, _}, _, [result | _] = acc -> {result, acc}
-      {:close_tag, _}, _, [result | rest] -> {result, rest}
+      {:close, _}, _, [result | rest] -> {result, rest}
       _, _, acc -> {not include, acc}
     end)
   end

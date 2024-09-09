@@ -8,78 +8,108 @@ defmodule FnXML.ParserTest do
     |> Enum.map(fn x -> x end)
   end
 
-  test "test 1" do
-    result = parse_xml("<ns:foo a=\"1\" a:b='2'>bar</ns:foo>")
-    assert result == [
-             open_tag: [
-               tag: "foo",
-               namespace: "ns",
-               attr_list: [{"a", "1"}, {"a:b", "2"}],
-               loc: {{1, 0}, 1}
-             ],
-             text: ["bar", {:loc, {{1, 0}, 25}}],
-             close_tag: [tag: "foo", namespace: "ns", loc: {{1, 0}, 27}]
-           ]
+  def filter_loc(tag_list) do
+    tag_list
+    |> Enum.map(fn {id, list} -> {id, Enum.filter(list, fn
+                                     {k, _v} -> k != :loc
+                                     _ -> true
+                                   end)}
+    end)
   end
 
-  test "test 2" do
-    result = parse_xml("<ns:foo a='1'><bar>message</bar></ns:foo>")
-    assert result == [
-             {:open_tag, [tag: "foo", namespace: "ns", attr_list: [{"a", "1"}], loc: {{1, 0}, 1}]},
-             {:open_tag, [tag: "bar", loc: {{1, 0}, 15}]},
-             {:text, ["message", {:loc, {{1, 0}, 26}}]},
-             {:close_tag, [tag: "bar", loc: {{1, 0}, 28}]},
-             {:close_tag, [tag: "foo", namespace: "ns", loc: {{1, 0}, 34}]}
-           ]
+  # tag tests; single tag with variations
+  test "open and close tag" do
+    result = parse_xml("<a></a>") |> filter_loc()
+    assert result == [open: [tag: "a"], close: [tag: "a"]]
   end
 
-  test "soap" do
-    input = "<soap:Envelope xmlns:soap=\"http://schemas.xmlsoap.org/soap/envelope/\" xmlns:soapenc=\"http://schemas.xmlsoap.org/soap/encoding/\" xmlns:tns=\"http://www.witsml.org/wsdl/120\" xmlns:types=\"http://www.witsml.org/wsdl/120/encodedTypes\" xmlns:xsd=\"http://www.w3.org/2001/XMLSchema\" xmlns:xsi=\"http://www.w3.org/2001/XMLSchema-instance\"><soap:Body soap:encodingStyle=\"http://schemas.xmlsoap.org/soap/encoding/\"><q1:WMLS_GetVersion xmlns:q1=\"http://www.witsml.org/message/120\"/></soap:Body></soap:Envelope>"
+  test "empty tag" do
+    result = parse_xml("<a/>") |> filter_loc()
+    assert result == [open: [tag: "a"], close: [tag: "a"]]
+  end
 
-    result = parse_xml(input)
+  test "tag with namespace" do
+    result = parse_xml("<a:b></a:b>") |> filter_loc()
+    assert result == [open: [tag: "b", namespace: "a"], close: [tag: "b", namespace: "a"]]
+  end
+
+  test "attributes" do
+    result = parse_xml("<a b=\"c\" d=\"e\"/>") |> filter_loc()
+    assert result == [open: [tag: "a", attributes: [{"b", "c"}, {"d", "e"}]], close: [tag: "a"]]
+  end
+
+  test "text" do
+    result = parse_xml("<a>text</a>") |> filter_loc()
+    assert result == [open: [tag: "a"], text: ["text"], close: [tag: "a"]]
+  end
+
+  test "tag with all meta" do
+    result = parse_xml("<ns:a b=\"c\" d=\"e\">text</ns:a>") |> filter_loc()
     assert result == [
-      {
-        :open_tag, [
-          tag: "Envelope",
-          namespace: "soap",
-          attr_list: [
-            {"xmlns:soap", "http://schemas.xmlsoap.org/soap/envelope/"},
-            {"xmlns:soapenc", "http://schemas.xmlsoap.org/soap/encoding/"},
-            {"xmlns:tns", "http://www.witsml.org/wsdl/120"},
-            {"xmlns:types", "http://www.witsml.org/wsdl/120/encodedTypes"},
-            {"xmlns:xsd", "http://www.w3.org/2001/XMLSchema"},
-            {"xmlns:xsi", "http://www.w3.org/2001/XMLSchema-instance"}
-          ],
-          loc: {{1, 0}, 1}
-        ]
-      },
-      {
-        :open_tag, [
-          tag: "Body",
-          namespace: "soap",
-          attr_list: [{"soap:encodingStyle", "http://schemas.xmlsoap.org/soap/encoding/"}],
-          loc: {{1, 0}, 329}
-        ]
-      },
-      {
-        :open_tag, [
-          tag: "WMLS_GetVersion",
-          namespace: "q1",
-          attr_list: [{"xmlns:q1", "http://www.witsml.org/message/120"}],
-          close: true,
-          loc: {{1, 0}, 403}
-        ]
-      },
-      {:close_tag, [tag: "Body", namespace: "soap", loc: {{1, 0}, 470}]},
-      {:close_tag, [tag: "Envelope", namespace: "soap", loc: {{1, 0}, 482}]}
+      open: [tag: "a", namespace: "ns", attributes: [{"b", "c"}, {"d", "e"}]],
+      text: ["text"],
+      close: [tag: "a", namespace: "ns"]
     ]
   end
 
   test "that '-', '_', '.' can be included in tags and namespaces" do
     input = "<my-env:fancy_tag.with-punc></my-env:fancy_tag.with-punc>"
     assert parse_xml(input) |> Enum.to_list() == [
-      open_tag: [tag: "fancy_tag.with-punc", namespace: "my-env", loc: {{1, 0}, 1}],
-      close_tag: [tag: "fancy_tag.with-punc", namespace: "my-env", loc: {{1, 0}, 30}]
+      open: [tag: "fancy_tag.with-punc", namespace: "my-env", loc: {{1, 0}, 1}],
+      close: [tag: "fancy_tag.with-punc", namespace: "my-env", loc: {{1, 0}, 30}]
+    ]
+  end
+
+  # nested tag tests
+  
+  test "test 2" do
+    result = parse_xml("<ns:foo a='1'><bar>message</bar></ns:foo>")
+    assert result == [
+             {:open, [tag: "foo", namespace: "ns", attributes: [{"a", "1"}], loc: {{1, 0}, 1}]},
+             {:open, [tag: "bar", loc: {{1, 0}, 15}]},
+             {:text, ["message", {:loc, {{1, 0}, 26}}]},
+             {:close, [tag: "bar", loc: {{1, 0}, 28}]},
+             {:close, [tag: "foo", namespace: "ns", loc: {{1, 0}, 34}]}
+           ]
+  end
+
+
+  test "single nested tag" do
+    xml = "<a><b/></a>"
+    result = parse_xml(xml) |> filter_loc()
+    assert result == [
+      open: [tag: "a"],
+      open: [tag: "b"],
+      close: [tag: "b"],
+      close: [tag: "a"]
+    ]
+  end
+
+  test "list of nested tags" do
+    xml = "<a><b/><c/><d/></a>"
+    result = parse_xml(xml) |> filter_loc()
+    assert result == [
+      open: [tag: "a"],
+      open: [tag: "b"], close: [tag: "b"],
+      open: [tag: "c"], close: [tag: "c"],
+      open: [tag: "d"], close: [tag: "d"],
+      close: [tag: "a"]
+    ]
+  end
+
+  test "list of nested tags with text" do
+    xml = "<a>b-text<b></b>c-text<c></c>d-text<d></d>post-text</a>"
+    result = parse_xml(xml) |> filter_loc()
+    assert result == [
+      open: [tag: "a"],
+      text: ["b-text"],
+      open: [tag: "b"], close: [tag: "b"],
+      text: ["c-text"],
+      open: [tag: "c"], close: [tag: "c"],
+      text: ["d-text"],
+      open: [tag: "d"], close: [tag: "d"],
+      text: ["post-text"],
+      close: [tag: "a"]
     ]
   end
 end

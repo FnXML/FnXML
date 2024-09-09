@@ -1,141 +1,120 @@
-defmodule FnXML.Stream.NativeDataStruct.DecoderDefaultTest do
+defmodule FnXML.Stream.NativeDataStruct.DecoderTest do
   use ExUnit.Case
 
   alias FnXML.Stream.NativeDataStruct, as: NDS
 
-  doctest NDS.DecoderDefault
+  doctest NDS.Decoder
 
-  test "open/close tag decode" do
-    stream = [open_tag: [tag: "bar", close: true]]
-    decode = NDS.DecoderDefault.decode(stream, []) |> Enum.at(0)
-    assert decode == %NDS{ tag: "bar", data: %{} }
+  test "tag" do
+    result = 
+      [ open: [tag: "a"], close: [tag: "a"] ]
+      |> NDS.Decoder.decode()
+      |> Enum.at(0)
+
+    assert result == %NDS{tag: "a"}
   end
 
-  test "open/close tag, depth 1 decode" do
-    stream = [
-      open_tag: [tag: "bar"],
-      open_tag: [tag: "foo", close: true],
-      close_tag: [tag: "bar"]
-    ]
-    decode =
-      NDS.DecoderDefault.decode(stream, [])
-      |> Enum.map(fn x -> x end)
-    
-    assert decode == [
-      %NDS{ tag: "bar", order_id_list: ["foo"], child_list: %{"foo" => %NDS{ tag: "foo" }}},
-    ]
+  test "tag with namespace" do
+    result = 
+      [ open: [tag: "a", namespace: "ns"], close: [tag: "a", namespace: "ns"] ]
+      |> NDS.Decoder.decode()
+      |> Enum.at(0)
+
+    assert result == %NDS{tag: "a", namespace: "ns"}
+  end
+
+  test "tag with attributes" do
+    result = 
+      [ open: [tag: "a", attributes: [{"b", "c"}, {"d", "e"}]], close: [tag: "a"] ]
+      |> NDS.Decoder.decode([])
+      |> Enum.at(0)
+
+    assert result == %NDS{tag: "a", attributes: [{"b", "c"}, {"d", "e"}]}
+  end
+
+  test "tag with text" do
+    result = 
+      [ open: [tag: "a"], text: ["b"], close: [tag: "a"] ]
+      |> NDS.Decoder.decode([])
+      |> Enum.at(0)
+
+    assert result == %NDS{tag: "a", content: ["b"]}
+  end
+
+  test "tag with all meta" do
+    result =
+      [
+        open: [tag: "hello", namespace: "ns", attributes: [{"a", "1"}]],
+        text: ["world"],
+        close: [tag: "hello", namespace: "ns"]
+      ]
+      |> NDS.Decoder.decode([])
+      |> Enum.at(0)
+
+    assert result == %NDS{tag: "hello", namespace: "ns", attributes: [{"a", "1"}], content: ["world"]}
   end
   
-  test "basic decode" do
-    map = %{ :a => "1", "text" => "world" }
-    result = (
-      NDS.encode(map, tag: "hello")
-      |> Stream.into([])
-      |> NDS.DecoderDefault.decode([])
-      |> Enum.map(fn x -> x end)
-    )
-    
-    assert result == [
-      %NDS{
-        tag: "hello",
-        attr_list: [a: "1"],
-        order_id_list: ["text"],
-        data: %{"text" => "world", a: "1"}
-      }
-    ]
-  end
-
   test "decode with child" do
-    map = %{
-      :a => "1",
-      "text" => ["hello", "world"],
-      "child" => %{
-        :b => "2",
-        "text" => "child world"
-      }
-    }
+    result =
+      [
+        open: [tag: "hello", namespace: "ns", attributes: [{"a", "1"}]],
+        text: ["hello"],
+        open: [tag: "child", attributes: [{"b", "2"}]],
+        text: ["child world"],
+        close: [tag: "child"],
+        text: ["world"],
+        close: [tag: "hello", namespace: "ns"]
+      ]
+      |> NDS.Decoder.decode([])
+      |> Enum.at(0)
 
-    result = (
-      NDS.encode(map, tag_from_parent: "hello")
-      |> Stream.into([])
-      |> NDS.DecoderDefault.decode([])
-      |> Enum.map(fn x -> x end)
-    )
-        
-    assert result == [
+    assert result == 
       %NDS{
         tag: "hello",
-        attr_list: [a: "1"],
-        order_id_list: ["text", "child", "text"],
-        child_list: %{
-          "child" => %NDS{
-            tag: "child",
-            attr_list: [b: "2"],
-            order_id_list: ["text"],
-            data: %{
-              :b => "2",
-              "text" => "child world"
-            }
-          }
-        },
-        data: %{
-          :a => "1",
-          "text" => ["hello", "world"],
-        }
+        attributes: [{"a", "1"}],
+        namespace: "ns",
+        content: [
+          "hello",
+          %NDS{tag: "child", attributes: [{"b", "2"}], content: ["child world"]},
+          "world"
+        ]
       }
-    ]
   end
 
+  @tag focus: true
   test "decode with child list" do
-    map = %{
-      :a => "1",
-      "text" => ["hello", "world"],
-      "child" => [
-        %{:b => "1", "text" => "child world" },
-        %{:b => "2", "text" => "child alt world" }
+    result =
+      [
+        open: [tag: "hello", namespace: "ns", attributes: [{"a", "1"}]],
+        text: ["hello"],
+        open: [tag: "child1", attributes: [{"b", "2"}]],
+        text: ["child world"],
+        close: [tag: "child1"],
+        open: [tag: "child1", attributes: [{"b", "2"}]],
+        text: ["alt world"],
+        close: [tag: "child1"],
+        open: [tag: "child2", attributes: [{"b", "2"}]],
+        text: ["other worldly"],
+        close: [tag: "child2"],
+        text: ["world"],
+        close: [tag: "hello", namespace: "ns"]
       ]
-    }
+      |> NDS.Decoder.decode([])
+      |> Enum.at(0)
 
-    result = (
-      NDS.encode(map, tag_from_parent: "hello")
-      |> Stream.into([])
-      |> NDS.DecoderDefault.decode([])
-      |> Enum.map(fn x -> x end)
-    )
-        
-    assert result == [
+    assert result ==
       %NDS{
         tag: "hello",
-        attr_list: [a: "1"],
-        order_id_list: ["child", "text", "child", "text"],
-        child_list: %{
-          "child" => [
-            %NDS{
-              tag: "child",
-              attr_list: [b: "1"],
-              order_id_list: ["text"],
-              data: %{
-                :b => "1",
-                "text" => "child world"
-              }
-            },
-            %NDS{
-              tag: "child",
-              attr_list: [b: "2"],
-              order_id_list: ["text"],
-              data: %{
-                :b => "2",
-                "text" => "child alt world"
-              }
-            }
-          ]
-        },
-        data: %{
-          :a => "1",
-          "text" => ["hello", "world"],
-        }
+        namespace: "ns",
+        attributes: [{"a", "1"}],
+        content: [
+          "hello",
+          %NDS{tag: "child1", attributes: [{"b", "2"}], content: ["child world"]},
+          %NDS{tag: "child1", attributes: [{"b", "2"}], content: ["alt world"]},
+          %NDS{tag: "child2", attributes: [{"b", "2"}], content: ["other worldly"]},
+          "world"
+        ]
       }
-    ]
   end
   
 end

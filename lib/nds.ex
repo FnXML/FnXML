@@ -44,55 +44,52 @@ defmodule FnXML.Stream.NativeDataStruct do
   """
 
   defstruct tag: "undef",
-    namespace: nil,
-    attr_list: [],
-    order_id_list: [],
-    child_list: %{},
-    data: %{},                 # original data structure, or in the case of a decode, this represents the known data
+    namespace: "",
+    attributes: [],
+    content: [],
     private: %{}               # private data for the encoder/decoder
 
 #  def update(nds, key, value), do: Map.put(nds, key, value)
 
-  @doc """
-  set the NDS tag
-  """
-  def tag(nds, tag) when is_binary(tag), do: %NDS{nds | tag: tag}
-  def tag(nds, tag_fun) when is_function(tag_fun, 1), do: %NDS{nds | tag: tag_fun.(nds)}
+  # @doc """
+  # set the NDS tag
+  # """
+  # def tag(nds, tag) when is_binary(tag), do: %NDS{nds | tag: tag}
+  # def tag(nds, tag_fun) when is_function(tag_fun, 1), do: %NDS{nds | tag: tag_fun.(nds)}
 
-  @doc """
-  set the NDS namespace
-  """
-  def namespace(nds, namespace) when is_binary(namespace), do: %NDS{nds | namespace: namespace}
-  def namespace(nds, namespace_fun) when is_function(namespace_fun, 1), do: %NDS{nds | namespace: namespace_fun.(nds)}
+  # @doc """
+  # set the NDS namespace
+  # """
+  # def namespace(nds, namespace) when is_binary(namespace), do: %NDS{nds | namespace: namespace}
+  # def namespace(nds, namespace_fun) when is_function(namespace_fun, 1), do: %NDS{nds | namespace: namespace_fun.(nds)}
 
-  
-  @doc """
-  set the attribute list for the NDS
+  # @doc """
+  # set the attribute list for the NDS
 
-  ## Examples
+  # ## Examples
         
-    iex> nds = %NDS{}
-    iex> NDS.attr_list(nds, [a: 1, b: 2])
-    %NDS{attr_list: [a: 1, b: 2]}
+  #   iex> nds = %NDS{}
+  #   iex> NDS.attributes(nds, [a: 1, b: 2])
+  #   %NDS{attributes: [a: 1, b: 2]}
 
-    iex> nds = %NDS{data: %{"a" => 1, b: 2, c: 3}}
-    iex> NDS.attr_list(nds, fn nds -> Enum.filter(nds.data, fn {k, _} -> is_atom(k) end) |> Enum.sort() end)
-    %NDS{attr_list: [b: 2, c: 3], data: %{"a" => 1, b: 2, c: 3}}
-  """
-  def attr_list(nds, attr_list) when is_list(attr_list), do: %NDS{nds | attr_list: attr_list}
-  def attr_list(nds, attr_fun) when is_function(attr_fun, 1), do: %NDS{nds | attr_list: attr_fun.(nds)}
+  #   iex> nds = %NDS{data: %{"a" => 1, b: 2, c: 3}}
+  #   iex> NDS.attributes(nds, fn nds -> Enum.filter(nds.data, fn {k, _} -> is_atom(k) end) |> Enum.sort() end)
+  #   %NDS{attributes: [b: 2, c: 3], data: %{"a" => 1, b: 2, c: 3}}
+  # """
+  # def attributes(nds, attributes) when is_list(attributes), do: %NDS{nds | attributes: attributes}
+  # def attributes(nds, attr_fun) when is_function(attr_fun, 1), do: %NDS{nds | attributes: attr_fun.(nds)}
 
-  @doc """
-  set the child list for the NDS
-  """
-  def child_list(nds, child_list) when is_map(child_list), do: %NDS{nds | child_list: child_list}
-  def child_list(nds, child_fun) when is_function(child_fun, 1), do: %NDS{nds | child_list: child_fun.(nds)}
+  # @doc """
+  # set the child list for the NDS
+  # """
+  # def child_list(nds, child_list) when is_map(child_list), do: %NDS{nds | child_list: child_list}
+  # def child_list(nds, child_fun) when is_function(child_fun, 1), do: %NDS{nds | child_list: child_fun.(nds)}
 
-  @doc """
-  set the order_id_list for the NDS
-  """
-  def order_id_list(nds, order_id_list) when is_list(order_id_list), do: %NDS{nds | order_id_list: order_id_list}
-  def order_id_list(nds, order_fun) when is_function(order_fun, 1), do: %NDS{nds | order_id_list: order_fun.(nds)}
+  # @doc """
+  # set the order_id_list for the NDS
+  # """
+  # def order_id_list(nds, order_id_list) when is_list(order_id_list), do: %NDS{nds | order_id_list: order_id_list}
+  # def order_id_list(nds, order_fun) when is_function(order_fun, 1), do: %NDS{nds | order_id_list: order_fun.(nds)}
   
   @doc """
   convert native data type to an FnXML.Stream representation
@@ -102,37 +99,40 @@ defmodule FnXML.Stream.NativeDataStruct do
       iex> data = %{"a" => "hi", "b" => %{"_" => "info", a: 1, b: 1}, c: "hi", d: 4}
       iex> NDS.encode(data, [])
       [
-        open_tag: [tag: "root", attr_list: [c: "hi", d: 4]],
+        open: [tag: "root", attributes: [{"c", "hi"}, {"d", "4"}]],
+        open: [tag: "a"],
         text: ["hi"],
-        open_tag: [tag: "b", attr_list: [a: 1, b: 1]],
+        close: [tag: "a"],
+        open: [tag: "b", attributes: [{"a", "1"}, {"b", "1"}]],
+        open: [tag: "_"],
         text: ["info"],
-        close_tag: [tag: "b"],
-        close_tag: [tag: "root"]
+        close: [tag: "_"],
+        close: [tag: "b"],
+        close: [tag: "root"]
       ]
   """
   def encode(map, opts \\ [])
   def encode(nil, opts), do: encode(%{}, opts)
   def encode(list, opts) when is_list(list), do: Enum.reduce(list, [], fn map, acc -> acc ++ encode(map, opts) end)
   def encode(map, opts) when is_map(map) do
-    encoder = Keyword.get(opts, :encoder, NDS.EncoderDefault)
     formatter = Keyword.get(opts, :formatter, NDS.Format.XML)
 
-    encoder.encode(map, opts) |> formatter.emit()
+    NDS.Encoder.encode(map, opts) |> formatter.emit()
   end
-  def encode(value, opts), do: encode(%{"value" => to_string(value)}, [{:text, fn map, _ -> map[:value] end} | opts])
+  def encode(value, opts), do: encode(%{"text" => to_string(value)}, [{:text, fn map, _ -> map[:value] end} | opts])
 
   @doc """
   convert native data type to a map representation
 
   ## Examples
 
-      iex> stream = [ open_tag: [tag: "foo"], close_tag: [tag: "foo"] ]
+      iex> stream = [ open: [tag: "foo"], close: [tag: "foo"] ]
       iex> NDS.decode(stream, format_meta: &NDS.no_meta/1)
       [%{"foo" => %{}}]
   """
   def decode(xml_stream, opts \\ [])
   def decode(xml_stream, opts) do
-    decoder = Keyword.get(opts, :decoder, NDS.DecoderDefault)
+    decoder = Keyword.get(opts, :decoder, NDS.Decoder)
     formatter = Keyword.get(opts, :formatter, NDS.Format.Map)
     decoder.decode(xml_stream, opts)
     |> Enum.map(fn x -> x end)
@@ -142,7 +142,7 @@ defmodule FnXML.Stream.NativeDataStruct do
   # various helper functions
   def no_meta(_), do: %{}
   def meta_ns_only(%NDS{namespace: ns}) do
-    if ns != nil, do: %{_meta: %{namespace: ns}}, else: %{}
+    if ns != nil and ns != "", do: %{_meta: %{namespace: ns}}, else: %{}
   end
 
   def format_raw(map), do: map

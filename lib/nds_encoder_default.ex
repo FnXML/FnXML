@@ -1,4 +1,4 @@
-defmodule FnXML.Stream.NativeDataStruct.EncoderDefault do
+ defmodule FnXML.Stream.NativeDataStruct.Encoder.Default do
   @moduledoc """
   This Module is used to convert a Native Data Structs (NDS) to a NDS Meta type, which can then be used
   to encode the NDS to an XML stream.
@@ -11,14 +11,13 @@ defmodule FnXML.Stream.NativeDataStruct.EncoderDefault do
   ## Example:
 
       iex> data = %{"a" => "hi", "b" => %{a: 1, b: 1}, c: "hi", d: 4}
-      iex> NDS.EncoderDefault.encode(data, tag_from_parent: "foo")
-      iex> |> NDS.Format.XML.emit()
-      [
-        open_tag: [tag: "foo", attr_list: [c: "hi", d: 4]],
-        text: ["hi"],
-        open_tag: [tag: "b", close: true, attr_list: [a: 1, b: 1]],
-        close_tag: [tag: "foo"],
-      ]
+      iex> NDS.Encoder.encode(data, module: NDS.Encoder.Default, tag_from_parent: "foo", text_keys: ["a"])
+      iex> |> NDS.TestHelpers.clear_private()
+      %NDS{
+        tag: "foo",
+        attributes: [{"c", "hi"}, {"d", "4"}],
+        content: [{:text, "a", "hi"}, {:child, "b", %NDS{tag: "b", attributes: [{"a", "1"}, {"b", "1"}]}}]
+      }
 
   # How a tag name is determined:
   - option: :tag_from_parent value (this is automatically set for nested structures
@@ -29,54 +28,25 @@ defmodule FnXML.Stream.NativeDataStruct.EncoderDefault do
   
   @behaviour NDS.Encoder
 
-  @doc """
-  encode returns a map of metadata about the data structure.
-
-  ## Examples
-
-      iex> NDS.EncoderDefault.encode(%{a: 1}, [])
-      %NDS{
-          data: %{a: 1},
-          tag: "root",
-          attr_list: [{:a, 1}],
-          namespace: "",
-          private: %{opts: []}
-      }
-
-      iex> data = %{"a" => "hi", "b" => %{a: 1, b: 1}, c: "hi", d: 4}
-      iex> NDS.EncoderDefault.encode(data, [tag_from_parent: "foo"]) |> NDS.TestHelpers.clear_private()
-      %NDS{
-          data: data,
-          tag: "foo",
-          attr_list: [{:c, "hi"}, {:d, 4}],
-          child_list: %{
-              "b" => %NDS {
-                  tag: "b",
-                  namespace: "",
-                  attr_list: [{:a, 1}, {:b, 1}], 
-                  data: %{a: 1, b: 1},
-              }
-          },
-          order_id_list: ["a", "b"],
-          namespace: "",
-      }
-  
-  """
   @impl NDS.Encoder
-  def encode(data, opts \\ [])
-  def encode(nds = %NDS{}, opts) do
-    meta_fun = Keyword.get(opts, :encoder_meta, &default_encoder_meta/1)
-    
-    nds
-    |> meta_fun.()
-    |> fn nds -> %NDS{nds | private: put_in(nds.private, [:opts], opts)} end.()
-    |> NDS.tag(Keyword.get(opts, :tag, fn nds -> default_tag(nds, opts) end))
-    |> NDS.namespace(Keyword.get(opts, :namespace, &default_namespace/1))
-    |> NDS.attr_list(Keyword.get(opts, :attr, &default_attributes/1))
-    |> NDS.child_list(Keyword.get(opts, :children, &default_children/1))
-    |> NDS.order_id_list(Keyword.get(opts, :order, &default_order/1))
+  def meta(nds, map) do
+    %NDS{nds | private: put_in(nds.private, [:meta], Map.get(map, :_meta, %{}))}
+    |> fn nds -> %NDS{nds | namespace: namespace(nds)} end.()
+    |> fn nds -> %NDS{nds | tag: tag(nds, map)} end.()
+    |> fn nds -> %NDS{nds | attributes: attributes(map)} end.()
   end
-  def encode(map, opts) when is_map(map), do: encode(%NDS{data: map}, opts)
+
+  @impl NDS.Encoder
+  def content(nds, map) do
+    text_keys = text_keys(nds, map)
+    attribute_keys = Enum.map(nds.attributes, fn {k, _} -> String.to_atom(k) end)
+
+    %NDS{ nds | content:
+          key_order(nds, map, [:_meta | attribute_keys], text_keys)
+          |> encode_item_list(nds)
+    }
+  end
+
 
   @doc """
   Returns a tuple with the type of the struct and the struct itself.  If `struct`
@@ -95,37 +65,6 @@ defmodule FnXML.Stream.NativeDataStruct.EncoderDefault do
   ##  
 
   @doc """
-  extract metadata from nds.data
-
-  ## Examples
-
-      iex> NDS.EncoderDefault.default_encoder_meta(%NDS{data: %{_meta: %{tag: "blue"}, a: 1}})
-      %NDS{
-          data: %{a: 1},
-          private: %{_meta: %{tag: "blue"}}
-      }
-  """
-
-  def default_encoder_meta(%NDS{data: %{ _meta: meta}} = nds) when not is_nil(meta) do
-    %NDS{nds | private: Map.put(nds.private, :_meta, meta), data: Map.delete(nds.data, :_meta)}
-  end
-  def default_encoder_meta(%NDS{} = nds), do: nds
-
-  @doc """
-  get namespace for nds
-
-  ## Examples
-
-      iex> NDS.EncoderDefault.default_namespace(%NDS{
-      iex>   data: %{"_meta" => %{"t" => "hi"}, a: 1},
-      iex>   private: %{ _meta: %{namespace: "foo", }}
-      iex> })
-      "foo"
-  """
-  def default_namespace(nds), do: get_in(nds.private, [:_meta, :namespace]) || ""
-
-  
-  @doc """
   find tag for nds
 
   1. use `:tag_from_parent` option if provided.
@@ -134,20 +73,26 @@ defmodule FnXML.Stream.NativeDataStruct.EncoderDefault do
 
   ## Examples:
 
-      iex> NDS.EncoderDefault.default_tag(%NDS{data: %{"a" => 1}}, [])
+      iex> NDS.Encoder.Default.tag(%NDS{private: %{opts: []}}, %{a: 1})
       "root"
 
-      iex> NDS.EncoderDefault.default_tag(%NDS{data: %{"a" => 1}}, tag_from_parent: "foo")
+      iex> NDS.Encoder.Default.tag(%NDS{private: %{ opts: [ tag_from_parent: "foo" ]}}, %{"a" => 1})
       "foo"
   """
-  def default_tag(nds, opts) do
-    tag_from_parent = Keyword.get(opts, :tag_from_parent)
-    {type, _map} = struct_type(nds.data)
-    tag_from_parent || type || get_in(nds.private, [:meta, :tag]) || "root"
-    |> fn
-      s when is_binary(s) -> s
-      s -> to_string(s)
-    end.()
+  def tag(nds, src) do
+    opts = nds.private[:opts] || []
+    meta = nds.private[:meta] || %{}
+    {type, _map} = struct_type(src)
+    
+    Keyword.get(opts, :tag_from_parent) || type || meta[:tag] || Keyword.get(opts, :tag) || "root"
+    |> to_string()
+  end
+
+  def namespace(nds) do
+    opts = nds.private[:opts] || []
+    meta = nds.private[:meta] || %{}
+
+    Keyword.get(opts, :namespace) || meta[:namespace] || ""
   end
 
 
@@ -157,140 +102,157 @@ defmodule FnXML.Stream.NativeDataStruct.EncoderDefault do
 
   ## Examples
 
-      iex> NDS.EncoderDefault.default_attributes(%NDS{data: %{"text" => "not an attribute", a: 1, b: 2}})
-      [{:a, 1}, {:b, 2}]
+      iex> NDS.Encoder.Default.attributes(%{"text" => "not an attribute", a: 1, b: 2})
+      [{"a", "1"}, {"b", "2"}]
   """
-  def default_attributes(nds) do
-    valid_attribute_types = [Binary, Integer, Float, Boolean]
-    Map.keys(nds.data)
-    |> Enum.map(fn
-      k ->
-        item = nds.data[k]
-        {k, item, FnXML.Type.type(item)}
-    end)
-    |> Enum.filter(fn {k, _, type} -> is_atom(k) and type in valid_attribute_types end)
-    |> Enum.map(fn {k, v, _} -> {k, v} end)
+  def attributes(src) do
+    Map.keys(src)
+    |> Enum.map(fn k -> {k, src[k], FnXML.Type.type(src[k])} end)
+    |> Enum.filter(fn {k, _, type} -> is_atom(k) and type in [Binary, Integer, Float, Boolean] end)
+    |> Enum.map(fn {k, v, _} -> {to_string(k), to_string(v)} end)
     |> Enum.sort(fn {k1, _}, {k2, _} -> k1 < k2 end)
   end
   
-  
+
   @doc """
-  Return a list of children from a nds.data.
-
-  ## Examples
-
-      iex> nds = %NDS{data: %{"c" => %{a: 1}, a: 1, b: 2}}
-      iex> NDS.EncoderDefault.default_children(nds)
-      %{ "c" => %NDS{
-          tag: "c",
-          namespace: "",
-          attr_list: [a: 1],
-          data: %{a: 1},
-          private: %{opts: [tag_from_parent: "c"]}
-      } }
+  returns sorted list of keys which are first sorted by text keys, then alphabetically
   """
-  def default_children(nds) do
-    Map.keys(nds.data)
-    |> Enum.filter(fn k -> valid_child(nds.data[k]) end)
-    |> Enum.map(fn k -> encode_child(nds, k, nds.data[k]) end)
-    |> Enum.into(%{})
+  def key_sort_fn(k1, k2, text_keys) do
+    (k1 in text_keys and k2 not in text_keys) or ((k1 in text_keys == k2 in text_keys) and (k1 < k2))
   end
 
-  def valid_child(child) when is_map(child), do: true
-  def valid_child([child|_]) when is_map(child), do: true
-  def valid_child(_), do: false
+  @doc """
+  returns an ordered list of keys.
+
+  A key order can be specified in the `nds.private.opts.order` or `nds.private.meta.order` keys.
+
+  If no order is specified, by default the order will be `text_keys` followed by any child keys
+  """
+  def key_order(nds, map, attribute_keys, text_keys) do
+    opts = nds.private[:opts] || []
+    meta = nds.private[:meta] || %{}
+
+    # check opts.order, meta.order, or create a default order
+    ( Keyword.get(opts, :order) ||
+      meta[:order] ||
+      default_key_order(map, attribute_keys, text_keys)
+    )
+    |> Enum.reduce({[], map}, fn k, {acc, map} ->
+      type = %{true => :text, false => :child}[k in text_keys]
+      {val, map} = case Map.has_key?(map, k) do
+        true -> content_value(k, map, type)
+        false -> {[], map}
+      end
+      {[val | acc], map}
+    end)
+    |> elem(0)  # get only the acc part, discard the map state
+    |> Enum.reverse()
+    |> List.flatten()
+  end
+
+  def default_key_order(map, attribute_keys, text_keys) do
+    # ensure keys with lists are included list-length times in the order list
+    Enum.reject(Map.keys(map), fn k -> k in attribute_keys end) 
+    |> Enum.sort(fn k1, k2 -> key_sort_fn(k1, k2, text_keys) end)
+    |> Enum.reduce([], fn k, acc ->
+      case map[k] do
+        val when is_list(val) -> [List.duplicate(k, length(val)) | acc]
+        _val -> [k | acc]
+      end
+    end)
+    |> Enum.reverse()
+    |> List.flatten()
+  end
+
+  def content_value(_, nil, map, _), do: {[], map}
+  def content_value(k, map, :text) do
+    {val, rest} = Listy.pop(map[k])
+    {[{:text, k, val}], %{map | k => rest}}
+  end
+  def content_value(k, map, :child) do
+    {val, rest} = Listy.pop(map[k])
+    { (if valid_child?(val), do: {:child, k, val}, else: []), %{map | k => rest} }
+  end
+
+  @doc """
+  given an %NDS{} struct and a map, return a list of keys that are text keys
+
+  The default text keys are "text", "t", or "#".  Any of these will be
+  treated as text content by default.
+
+  The default can be overridden by specifying a list of text keys in
+  opts[:text_keys], or by sepcifying the keys in the `:_meta` key of
+  the map as: `%{:_meta => %{text_keys: ["a", "b"]}}`.
+  """
+  def text_keys(nds, map) do
+    opts = nds.private[:opts] || []
+    meta = nds.private[:meta] || %{}
+
+    ( Keyword.get(opts, :text_keys) ||
+      meta[:text_keys] ||
+      ["text", "t", "#"] )
+    ( Keyword.get(opts, :text_keys) || meta[:text_keys] || ["text", "t", "#"] )
+    |> Enum.reject(fn k -> not Map.has_key?(map, k) end)
+  end
+
+  @doc """
+  given a value, return true if it is a valid child value
+  """
+  def valid_child?(child) when is_map(child), do: true
+  def valid_child?([child|_]), do: valid_child?(child)
+  def valid_child?(child) when is_binary(child), do: true
+  def valid_child?(_), do: false
+
+  @doc """
+  Iterate over ther order list and select the key values, or the first item in a list of values
+  """
+  def encode_item_list(item_list, nds) do
+    item_list
+    |> Enum.reduce([], fn
+      {:text, _, _} = item, acc -> [item | acc]
+      {:child, key, val}, acc when is_binary(val) -> [ {:child, key,  encode_child(nds, key, val)} | acc]
+      {:child, key, val}, acc -> [ {:child, key, encode_child(nds, key, val)} | acc]
+    end)
+    |> Enum.reverse()
+  end
 
   def encode_child(nds, key, child) when is_list(child) do
-    {
-      key,
-      Enum.map(child, fn
-        v -> encode(v, [{:tag_from_parent, key} | nds.private[:opts] || []] |> propagate_opts())
-      end)
-    }
+    Enum.map(child, fn v -> NDS.Encoder.encode(v, update_opts(nds, key)) end) 
   end
   def encode_child(nds, key, child) when is_map(child) do
-    {key, encode(child, [{:tag_from_parent, key} | nds.private[:opts] || []] |> propagate_opts())}
+    NDS.Encoder.encode(child, update_opts(nds, key))
   end
   def encode_child(nds, key, child) when is_binary(child) do
-    {key, encode(%{"text" => child}, [{:tag_from_parent, key} | nds.private[:opts] || []] |> propagate_opts())}
+    if Keyword.get(nds.private.opts, :text_only_tags, false) do
+      NDS.Encoder.encode(%{key => %{"text" => child}}, update_opts(nds, key))
+    else
+      NDS.Encoder.encode(%{"text" => child}, update_opts(nds, key))
+    end
   end
+
+  def update_opts(nds, key), do: [{:tag_from_parent, key} | nds.private[:opts] || []] |> propagate_opts()
 
   def propagate_opts(opts) do
     Enum.filter(opts, fn {k, v} -> is_function(v) or k in [:tag_from_parent, :encoder_meta] end)
   end
         
-
-  @doc """
-  Returns a list of element ids in the order they should be encoded/decoded.  The default function
-  takes a guess, that the keys for children and text are interleaved and that the list of children
-  or text which is the longest appears first.
-
-  ## Examples:
-
-      iex> %NDS{data: %{"text" => ["a", "b"], a: 1, b: 2}, attr_list: [a: 1, b: 2], child_list: %{"child" => %NDS{data: %{"text" => "c"}}}}
-      iex> |> NDS.EncoderDefault.default_order()
-      ["text", "child", "text"]
-
-      iex> %NDS{data: %{"text" => ["a", "b", "c"], a: 1}, child_list: %{"d" => %NDS{data: %{"text" => "c"}}},
-      iex>   private: %{meta: %{order: ["text", "text", "child", "text"]}}
-      iex> }
-      iex> |> NDS.EncoderDefault.default_order()
-      ["text", "text", "child", "text"]
-  """
-  def default_order(%NDS{private: %{meta: %{order: order}}}), do: order
-  def default_order(nds) do
-    order_keys = Enum.filter(Map.keys(nds.data), fn k -> k not in nds.attr_list end)
-    child_keys =
-      Map.keys(nds.child_list)
-      |> Enum.map(fn k -> order_item(k, nds.child_list[k]) end)
-      |> List.flatten()
-    text_keys =
-      Enum.filter(order_keys, fn k -> k not in child_keys ++ Keyword.keys(nds.attr_list) end)
-      |> Enum.reduce([], fn k, acc -> acc ++ order_item(k, nds.data[k]) end)
-
-    interleave(text_keys, child_keys)
-  end
-
+  
   @doc """
   for lists, returns a list with the key repeated for each element in the list
   for all other values, returns a list with the key
 
   ## Examples
 
-      iex> NDS.EncoderDefault.order_item("a", [1, 2, 3])
+      iex> NDS.Encoder.Default.order_item("a", [1, 2, 3])
       ["a", "a", "a"]
 
-      iex> NDS.EncoderDefault.order_item("a", 1)
+      iex> NDS.Encoder.Default.order_item("a", 1)
       ["a"]
 
-      iex> NDS.EncoderDefault.order_item("a", "hello")
+      iex> NDS.Encoder.Default.order_item("a", "hello")
       ["a"]
   """
   def order_item(k, value) when is_list(value), do: List.duplicate(k, length(value))
   def order_item(k, _), do: [k]
-
-  @doc """
-  This function takes two lists and combines them into a new list alternatiting elements between each list.
-  The first element is always from the longest list, and the lists do not have to be the same length, when
-  list is empty, the remaining elements are appended to the accumulator.
-
-  ## Examples
-
-      iex> NDS.EncoderDefault.interleave([1, 2, 3], ["a", "b"])
-      [1, "a", 2, "b", 3]
-
-      iex> NDS.EncoderDefault.interleave([1, 2], ["a", "b", "c"])
-      ["a", 1, "b", 2, "c"]
-
-      iex> NDS.EncoderDefault.interleave([1, 2, 3], ["a"])
-      [1, "a", 2, 3]
-  """
-  def interleave(a, b) when length(a) >= length(b), do: interleave(a, b, [])
-  def interleave(a, b), do: interleave(b, a, [])
-  
-  defp interleave([], [], acc), do: acc
-  defp interleave([a|a_rest], [b|b_rest], acc), do: interleave(a_rest, b_rest, acc ++ [a, b])
-  defp interleave(a, [], acc), do: acc ++ a
-  defp interleave([], b, acc), do: acc ++ b
 end
 

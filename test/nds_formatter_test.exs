@@ -8,18 +8,18 @@ defmodule FnXML.Stream.NativeDataStruct.Format.XMLTest do
   describe "Format NDS to XML Stream:" do
     test "value" do
       assert NDS.encode("world", tag: "hello") == [
-        open_tag: [tag: "hello"],
+        open: [tag: "hello"],
         text: ["world"],
-        close_tag: [tag: "hello"]
+        close: [tag: "hello"]
       ]
     end
 
     test "basic map" do
       map = %{ "text" => "hi", :a => "1" }
       assert NDS.encode(map, tag: "foo") == [
-        open_tag: [tag: "foo", attr_list: [a: "1"]],
+        open: [tag: "foo", attributes: [{"a", "1"}]],
         text: ["hi"],
-        close_tag: [tag: "foo"]
+        close: [tag: "foo"]
       ]
     end
 
@@ -34,12 +34,12 @@ defmodule FnXML.Stream.NativeDataStruct.Format.XMLTest do
       }
 
       assert NDS.encode(map, tag_from_parent: "hello") == [
-        open_tag: [tag: "hello", attr_list: [a: "1"]],
+        open: [tag: "hello", attributes: [{"a", "1"}]],
         text: ["world"],
-        open_tag: [tag: "child", attr_list: [b: "2"]],
+        open: [tag: "child", attributes: [{"b", "2"}]],
         text: ["child world"],
-        close_tag: [tag: "child"],
-        close_tag: [tag: "hello"]
+        close: [tag: "child"],
+        close: [tag: "hello"]
       ]
     end
 
@@ -55,18 +55,18 @@ defmodule FnXML.Stream.NativeDataStruct.Format.XMLTest do
       }
 
       assert NDS.encode(map, tag_from_parent: "hello") == [
-        open_tag: [tag: "hello", attr_list: [a: "1"]],
-        open_tag: [tag: "child", attr_list: [b: "1"]],
-        text: ["child world"],
-        close_tag: [tag: "child"],
+        open: [tag: "hello", attributes: [{"a", "1"}]],
         text: ["world"],
-        open_tag: [tag: "child", attr_list: [b: "2"]],
+        open: [tag: "child", attributes: [{"b", "1"}]],
+        text: ["child world"],
+        close: [tag: "child"],
+        open: [tag: "child", attributes: [{"b", "2"}]],
         text: ["child alt world"],
-        close_tag: [tag: "child"],
-        open_tag: [tag: "child", attr_list: [b: "3"]],
+        close: [tag: "child"],
+        open: [tag: "child", attributes: [{"b", "3"}]],
         text: ["child other world"],
-        close_tag: [tag: "child"],
-        close_tag: [tag: "hello"]
+        close: [tag: "child"],
+        close: [tag: "hello"]
       ]
     end
   end

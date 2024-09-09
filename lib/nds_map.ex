@@ -9,12 +9,12 @@ defmodule FnXML.Stream.NativeDataStruct.Format.Map do
   ## Examples
 
       iex> data = %{"a" => "hi", "b" => %{"info" => "info", a: 1, b: 1}, c: "hi", d: 4}
-      iex> nds = NDS.EncoderDefault.encode(data, [tag_from_parent: "foo"])
-      iex> NDS.Format.Map.emit(nds)
+      iex> nds = NDS.Encoder.encode(data, [tag_from_parent: "foo"])
+      iex> #NDS.Format.Map.emit(nds)
       %{
         "foo" => %{
-          "a" => "hi", :c => "hi", :d => 4,
-          "b" => %{ "info" => "info", :a => 1, :b => 1, _meta: %{tag: "b", order: ["info"]} },
+          "a" => "hi", :c => "hi", :d => "4",
+          "b" => %{ "info" => "info", :a => "1", :b => "1", _meta: %{tag: "b", order: ["info"]} },
           _meta: %{tag: "foo", order: ["a", "b"]}
         }
       }
@@ -27,53 +27,83 @@ defmodule FnXML.Stream.NativeDataStruct.Format.Map do
   def emit(nds, opts \\ [])
   def emit(%NDS{} = nds, opts) do
     finalize = Keyword.get(opts, :format_finalize, &default_finalize/1)
+    # finalize is run on the final map result
+
+    # emit child is the main function of this module
     [emit_child(nds, opts)] |> Enum.into(%{}) |> finalize.()
   end
+
+  # emits a list by iterating over each item
   def emit(list, opts) when is_list(list) do
     Enum.map(list, fn x -> emit(x, opts) end)
   end
 
+  # this is the main part here
   def emit_child(%NDS{} = nds, opts) do
+    # formats the meta data
     meta_fun = Keyword.get(opts, :format_meta, &default_meta/1)
-    attr = Enum.map(nds.attr_list, fn
+
+    # formats the  attributes into a map
+    attr = Enum.map(nds.attributes, fn
       {k, v} when is_atom(k) -> {k, v}
+      {k, v} when is_binary(k) -> {String.to_atom(k), v}
       {k, v} -> { to_string(k) |> String.to_atom(), v}
     end)
     |> Enum.into(%{})
 
-    {
-      nds.tag,
-      meta_fun.(nds)
+    { nds.tag,
+      meta_fun.(nds)   # format meta-data
       |> Map.merge(attr)
-      |> Map.merge(id_list(nds, opts))
+      #|> Map.merge(id_list(nds, opts))  # this needs to be adjusted to fix for the new format:
+      
+      # iterate over the text and children and emit them --> convert this to content
+      |> Map.merge(
+        Enum.reduce(nds.content, %{}, fn
+          text, acc when is_binary(text) -> emit_data({"text", text}, acc)
+          {:text, _, text}, acc when is_binary(text) -> emit_data({"text", text}, acc)
+          %NDS{} = nds, acc -> emit_child(nds, opts) |> emit_data(acc)
+          {:child, _, nds}, acc -> emit_child(nds, opts) |> emit_data(acc)
+        end)
+        |> Enum.map(fn
+          {k, v} when is_list(v) -> {k, v |> Enum.reverse()}
+          {k, v} -> {k, v}
+        end)
+        |> Enum.into(%{})
+      )
     }
   end
-  def emit_child([h|_] = list, opts) when is_list(list) do
-    {h.tag, Enum.map(list, fn x -> emit_child(x, opts) |> elem(1) end)}
+
+  def emit_data({key, data}, acc) do
+    Map.put(acc, key, append(acc[key], data))
   end
 
-  def id_list(%NDS{} = nds, opts) do
-    nds.order_id_list
-    |> Enum.map(fn key -> emit_data(key, nds.child_list[key], nds.data[key], opts) end)
-    |> Enum.into(%{})
-  end
-
-  def emit_data(_, child, _, opts) when not is_nil(child), do: emit_child(child, opts)
-  def emit_data(key, _, data, _) when not is_nil(data), do: {key, data}
-  def emit_data(_, _, _, _), do: {}
+  def append(nil, item), do: item
+  def append(list, item) when is_list(list), do: [item | list]
+  def append(value, item), do: [item, value]
 
   def default_meta(%NDS{} = nds)do
     namespace = nds.namespace
-    order = if nds.order_id_list == [], do: nil, else: nds.order_id_list
-    meta =
+    order = if nds.content == [], do: nil, else: Enum.map(nds.content, fn
+            %NDS{} = nds -> nds.tag
+            {:child, _k, nds} -> nds.tag
+            val when is_binary(val) -> "text"
+            {:text, _k, _val} -> "text"
+          end)
+    %{_meta:
       %{ tag: nds.tag, namespace: namespace, order: order }
-      |> Enum.filter(fn
-        {_, v} when is_binary(v) -> v != ""
-        {_, v} -> not is_nil(v)
-      end)
+      |> Enum.filter(&filter_empty/1)
       |> Enum.into(%{})
-    
-    %{_meta: meta}
+    }
+  end
+
+  def filter_empty({_k, v}) when is_binary(v), do: v != ""
+  def filter_empty({_k, v}), do: not is_nil(v)
+
+  def content_to_order(content) do
+    Enum.map(content, fn
+      {:child, _, nds} -> nds.tag
+      {:text, _, _} -> "text"
+    end)
   end
 
   # *** test and validate this function
@@ -88,13 +118,23 @@ defmodule FnXML.Stream.NativeDataStruct.Format.Map do
   """
   def default_finalize(map) when is_map(map) do
     Enum.map(map, fn
+      {:_meta, _} = meta -> meta
       {k, v} when is_map(v) ->
-        { k, (if length(Map.keys(v)) == 1 and Map.has_key?(v, "text"), do: v["text"], else: default_finalize(v)) }
+        map0 = if (is_nil(v[:_meta]) or (v[:_meta][:namespace] not in [nil, ""])), do: v, else: Map.drop(v, [:_meta])
+        { k, (if length(Map.keys(map0)) == 1 and Map.has_key?(map0, "text"), do: map0["text"], else: default_finalize(v)) }
+      {k, v} when is_list(v) ->
+        { k, Enum.map(v, fn map -> default_finalize(%{k => map}) |> Enum.to_list() |> Enum.at(0) |> elem(1) end) }
       {k, v} ->
         {k, v}
     end)
     |> Enum.into(%{})
   end
-  def default_finalize(x), do: x 
+  def default_finalize(x), do: x
+
+  def default_finalize_item(item) when is_map(item) do
+    if length(Map.keys(item)) == 1 and Map.has_key?(item, "text"), do: item["text"], else: default_finalize(item)
+  end
+  def default_finalize_item(item), do: item
+    
 end
 

@@ -3,8 +3,8 @@ defmodule FnXML.Parser do
   XML Parser: This parser emits a stream of XML tags and text.
 
   It is designed to be used with Streams.  The parser emits 3 different types of items:
-  {:open_tag, [... open tag data...]}
-  {:close_tag, [... close tag data...]}
+  {:open, [... open tag data...]}
+  {:close, [... close tag data...]}
   {:text, [... text data...]}
 
   These are available as a stream of items which can be processed by other stream functions.
@@ -30,7 +30,7 @@ defmodule FnXML.Parser do
   ws = ascii_string([?\s, ?\n], min: 1)
 
   defcombinatorp(
-    :attribute,
+    :attributes,
     ignore(optional(ws))
     |> concat(ns_id)
     |> ignore(optional(ws))
@@ -48,7 +48,7 @@ defmodule FnXML.Parser do
     |> byte_offset()
     |> reduce(:add_loc)
     |> concat(tag)
-    |> optional(parsec(:attribute) |> repeat() |> tag(:attr_list))
+    |> optional(parsec(:attributes) |> repeat() |> tag(:attributes))
     |> reduce(:filter_empty_attr)
     |> choice([
       string("/>") |> tag(:close) |> reduce(:set_true),
@@ -56,7 +56,7 @@ defmodule FnXML.Parser do
     ])
     |> reduce(:deconvolute)
     |> reduce(:sort)
-    |> unwrap_and_tag(:open_tag)
+    |> unwrap_and_tag(:open)
   )
 
   defcombinatorp(
@@ -69,7 +69,7 @@ defmodule FnXML.Parser do
     |> concat(tag)
     |> ignore(string(">"))
     |> reduce(:close_deconvolute)
-    |> unwrap_and_tag(:close_tag)
+    |> unwrap_and_tag(:close)
   )
 
   defcombinatorp(
@@ -118,8 +118,8 @@ defmodule FnXML.Parser do
   defp deconvolute([[loc: loc], tag]), do: [{:loc, loc} | tag]
   defp deconvolute([list]), do: list
 
-  defp filter_empty_attr([loc, {:tag, tag}, {:attr_list, []}]), do: [tag: tag] ++ loc
-  defp filter_empty_attr([loc, tag, {:attr_list, []}]), do: tag ++ loc
+  defp filter_empty_attr([loc, {:tag, tag}, {:attributes, []}]), do: [tag: tag] ++ loc
+  defp filter_empty_attr([loc, tag, {:attributes, []}]), do: tag ++ loc
   defp filter_empty_attr([loc, {:tag, tag}, attr]), do: [attr | [tag: tag]] ++ loc
   defp filter_empty_attr([loc, tag, attr]), do: [attr | tag] ++ loc
 
@@ -132,7 +132,7 @@ defmodule FnXML.Parser do
   #  defp add_line([{[{label, tag}], line}]), do: {label, tag, line}
 
   defp sort([list]) do
-    key_order = [:tag, :namespace, :attr_list]
+    key_order = [:tag, :close, :namespace, :attributes]
     index = fn list, item -> Enum.find_index(list, &Kernel.==(&1, item)) end
     Enum.sort_by(list, fn {k, _} -> index.(key_order, k) end)
   end
@@ -141,7 +141,15 @@ defmodule FnXML.Parser do
 
   def parse_next({xml, loc, offset}) do
     {:ok, [next_item], rest, _, loc, offset} = element__0(xml, [], [], [], loc, offset)
-    {[next_item], {rest, loc, offset}}
+
+    # this case checks for empty tags "close: true", and converts it to eh [{:open [ta: ...]}{:close [tag: ...]}] form
+    case next_item do
+      {:open, [{:tag, tag}, {:close, true}, {:namespace, ns} | meta]} ->
+        {[open: [{:tag, tag}, {:namespace, ns} | meta], close: [tag: tag, namespace: ns]], {rest, loc, offset}}
+      {:open, [{:tag, tag}, {:close, true} | meta]} ->
+        {[open: [{:tag, tag} | meta], close: [tag: tag]], {rest, loc, offset}}
+      _ -> {[next_item], {rest, loc, offset}}
+    end
   end
 
   def parse(xml) do

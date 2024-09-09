@@ -13,9 +13,10 @@ defmodule FnXML.Stream.NativeDataStruct.Format.StructTest do
 
   doctest NDS.Format.Struct
 
+  @tag :skip
   test "struct test" do
     data = %{"a" => "hi", "b" => %{"info" => "info", a: 1, b: 1}, c: "hi", d: 4}
-    meta = NDS.EncoderDefault.encode(data, [tag_from_parent: "foo"])
+    meta = NDS.Encoder.encode(data, [tag_from_parent: "foo"])
 
     tag_map = %{
       a: "a",

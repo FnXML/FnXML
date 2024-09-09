@@ -13,7 +13,7 @@ defmodule FnXML.Map do
   `tag_from_parent` can be used to specify the tag to use if it is not specified in the data structure.
 
   `encoder_meta` can be used to specify a function that will be called to collect the meta data for the encoded map.
-  See `NDS.EncoderDefault.encode/2` for more information.
+  See `NDS.Encoder.Default.encode/2` for more information.
   """
 
   def encode(map, opts \\ []) do
@@ -35,7 +35,7 @@ defmodule FnXML.Map do
 
       # default behavior
       iex> FnXML.Map.decode("<ns:foo>content</ns:foo>")
-      [%{"foo" => %{ "text" => "content", _meta: %{tag: "foo", namespace: "ns", order: ["text"]}}}]
+      [%{"foo" => %{:_meta => %{tag: "foo", namespace: "ns", order: ["text"]}, "text" => "content"}}]
 
       # do not produce meta data
       iex> FnXML.Map.decode("<ns:foo>content</ns:foo>", format_meta: &NDS.no_meta/1)

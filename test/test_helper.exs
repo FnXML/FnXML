@@ -7,17 +7,8 @@ defmodule FnXML.Stream.NativeDataStruct.TestHelpers do
   @doc """
   clear private data, restore to a value of `%{}`  (primarily for testing)
   """
-  def clear_private(%NDS{} = nds) do
-    %NDS{nds | private: %{}}
-    |> Map.put(:child_list, clear_private(nds.child_list))
-  end
-  def clear_private(nds) when is_map(nds) do
-    Map.keys(nds)
-    |> Enum.map(fn x -> {x, clear_private(nds[x])} end)
-    |> Enum.into(%{})
-  end
-  def clear_private(nds) when is_list(nds) do
-    Enum.map(nds, fn x -> clear_private(x) end)
-  end
+  def clear_private(%NDS{} = nds), do: %NDS{nds | private: %{}, content: clear_private(nds.content)}
+  def clear_private(list) when is_list(list), do: Enum.map(list, fn x -> clear_private(x) end)
+  def clear_private({:child, k, %NDS{} = v}), do: {:child, k, clear_private(v)}
+  def clear_private({_, _, _} = item), do: item
 end
-
