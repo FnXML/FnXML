@@ -47,6 +47,11 @@ defmodule FnXML.StreamTest do
         close: [tag: "foo"]
       ]
     end
+
+    test "transform empty tag" do
+      result = [ open: [tag: "a"], open: [tag: "b", close: true], close: [tag: "a"]] |> FnXML.Stream.to_xml() |> Enum.join()
+
+      assert result == "<a><b/></a>"
+    end
   end
-  
 end

@@ -79,7 +79,8 @@ defmodule FnXML.Stream do
   fun:
       a function that takes three arguments:
           - element: the current element, ex: {:open, %{tag: "foo"}}
-          - stack: the current stack of open tags (the path), ex: [ {"bar", ""}, {"foo", ""} ]
+          - stack: the current stack of open tags (the path), ex: [ {"bar", ""}, {"foo", ""} ], each element on the stack
+            contains a tuple: {tag, namespace}.
           - the current accumulator
       this function should return:
           - the new accumulator or {element to emit, new accumulator}
@@ -101,7 +102,7 @@ defmodule FnXML.Stream do
 
   defp process_item({:open, parts} = element, {stack, acc, fun}) do
     tag = Element.tag(parts)
-    new_stack = [tag | stack]
+    new_stack = if not Element.close?(parts), do: [tag | stack], else: stack
 
     fun.(element, new_stack, acc) |> next(new_stack, fun)
   end
