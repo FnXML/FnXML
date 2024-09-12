@@ -1,3 +1,8 @@
+defmodule Format.Map.StructTest do
+  defstruct [:a, :b]
+end
+
+
 defmodule FnXML.Stream.NativeDataStruct.Format.MapTest do
   use ExUnit.Case
 
@@ -84,7 +89,6 @@ defmodule FnXML.Stream.NativeDataStruct.Format.MapTest do
     )
   end
 
-  @tag focus: true
   test "parse nested tags with content in between" do
     apply_test(
       "<tag><nested>content1</nested>sandwich content<nested>content3</nested>other info<nested>last</nested></tag>",
@@ -140,15 +144,23 @@ defmodule FnXML.Stream.NativeDataStruct.Format.MapTest do
     )
   end
 
-  test "finalize" do
-    apply_test(
-      "<bar><foo>a</foo><foo>b</foo><foo last=\"true\">c</foo></bar>",
-      %{
-        "bar" => %{
-          "foo" => [ "a", "b", %{ "text" => "c", last: "true"}]
-        }
-      },
-      format_meta: &NDS.no_meta/1
-    )
+  describe "finalize" do
+    test "basic" do
+      apply_test(
+        "<bar><foo>a</foo><foo>b</foo><foo last=\"true\">c</foo></bar>",
+        %{
+          "bar" => %{
+            "foo" => [ "a", "b", %{ "text" => "c", last: "true"}]
+          }
+        },
+        format_meta: &NDS.no_meta/1
+      )
+    end
+
+    test "finalize with struct" do
+      map = %{ "a" => %Format.Map.StructTest{a: 1, b: 2}, "b" => %{ "text" => "hi" }}
+      result = NDS.Format.Map.default_finalize(map)
+      assert result == %{ "a" => %Format.Map.StructTest{a: 1, b: 2}, "b" => "hi"}
+    end
   end
 end

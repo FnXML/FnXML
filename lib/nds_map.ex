@@ -125,8 +125,13 @@ defmodule FnXML.Stream.NativeDataStruct.Format.Map do
   """
   def default_finalize(%{__struct__: _} = struct), do: struct   # skip for structs
   def default_finalize(map) when is_map(map) do
+    if Map.has_key?(map, :__struct__) do
+      IO.puts("is a struct")
+    end
+    
     Enum.map(map, fn
       {:_meta, _} = meta -> meta
+      {k, %{__struct__: _} = v} -> {k, v}
       {k, v} when is_map(v) ->
         map0 = if (is_nil(v[:_meta]) or (v[:_meta][:namespace] not in [nil, ""])), do: v, else: Map.drop(v, [:_meta])
         { k, (if length(Map.keys(map0)) == 1 and Map.has_key?(map0, "text"), do: map0["text"], else: default_finalize(v)) }
