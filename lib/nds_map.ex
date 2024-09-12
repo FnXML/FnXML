@@ -42,14 +42,12 @@ defmodule FnXML.Stream.NativeDataStruct.Format.Map do
   def emit_child(%NDS{} = nds, opts) do
     # formats the meta data
     meta_fun = Keyword.get(opts, :format_meta, &default_meta/1)
+    attr_fun = Keyword.get(opts, :format_attributes, &default_attr/1)
+    text_fun = Keyword.get(opts, :format_text, fn x -> x end)
+    child_fun = Keyword.get(opts, :format_child, fn x -> x end)
 
     # formats the  attributes into a map
-    attr = Enum.map(nds.attributes, fn
-      {k, v} when is_atom(k) -> {k, v}
-      {k, v} when is_binary(k) -> {String.to_atom(k), v}
-      {k, v} -> { to_string(k) |> String.to_atom(), v}
-    end)
-    |> Enum.into(%{})
+    attr = attr_fun.(nds.attributes)
 
     { nds.tag,
       meta_fun.(nds)   # format meta-data
@@ -59,10 +57,10 @@ defmodule FnXML.Stream.NativeDataStruct.Format.Map do
       # iterate over the text and children and emit them --> convert this to content
       |> Map.merge(
         Enum.reduce(nds.content, %{}, fn
-          text, acc when is_binary(text) -> emit_data({"text", text}, acc)
-          {:text, _, text}, acc when is_binary(text) -> emit_data({"text", text}, acc)
-          %NDS{} = nds, acc -> emit_child(nds, opts) |> emit_data(acc)
-          {:child, _, nds}, acc -> emit_child(nds, opts) |> emit_data(acc)
+          text, acc when is_binary(text) -> {"text", text} |> text_fun.() |> emit_data(acc)
+          {:text, _, text}, acc when is_binary(text) -> {"text", text} |> text_fun.() |> emit_data(acc)
+          %NDS{} = nds, acc -> emit_child(nds, opts) |> child_fun.() |> emit_data(acc)
+          {:child, _, nds}, acc -> emit_child(nds, opts) |> child_fun.() |> emit_data(acc)
         end)
         |> Enum.map(fn
           {k, v} when is_list(v) -> {k, v |> Enum.reverse()}
@@ -94,6 +92,15 @@ defmodule FnXML.Stream.NativeDataStruct.Format.Map do
       |> Enum.filter(&filter_empty/1)
       |> Enum.into(%{})
     }
+  end
+
+  def default_attr(attr_list) do
+    Enum.map(attr_list, fn
+      {k, v} when is_atom(k) -> {k, v}
+      {k, v} when is_binary(k) -> {String.to_atom(k), v}
+      {k, v} -> { to_string(k) |> String.to_atom(), v}
+    end)
+    |> Enum.into(%{})
   end
 
   def filter_empty({_k, v}) when is_binary(v), do: v != ""
