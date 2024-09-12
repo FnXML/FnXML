@@ -112,4 +112,36 @@ defmodule FnXML.ParserTest do
       close: [tag: "a"]
     ]
   end
+
+  describe "white space" do
+    test "tag without ws" do
+      result = parse_xml("<a></a>") |> filter_loc()
+      assert result == [{:open, [tag: "a"]}, {:close, [tag: "a"]}]
+    end
+    test "tag with ws before name" do
+      result = parse_xml("< a></ a>") |> filter_loc()
+      assert result == [{:open, [tag: "a"]}, {:close, [tag: "a"]}]
+    end
+    test "tag with ws after name" do
+      result = parse_xml("<a ></a >") |> filter_loc()
+      assert result == [{:open, [tag: "a"]}, {:close, [tag: "a"]}]
+    end
+    test "tag with ws before and after name" do
+      result = parse_xml("< a ></ a >") |> filter_loc()
+      assert result == [{:open, [tag: "a"]}, {:close, [tag: "a"]}]
+    end
+    test "tag with tab" do
+      result = parse_xml("<a\t></a>") |> filter_loc()
+      assert result == [{:open, [tag: "a"]}, {:close, [tag: "a"]}]
+    end
+    test "tag with tab before and after" do
+      result = parse_xml("<\ta\t></\ta\t>") |> filter_loc()
+      assert result == [{:open, [tag: "a"]}, {:close, [tag: "a"]}]
+    end
+    test "namespace:tag with ws" do
+      result = parse_xml("<\tns :\ta ></ ns\t: a\t>") |> filter_loc()
+      assert result == [{:open, [tag: "a", namespace: "ns"]}, {:close, [tag: "a", namespace: "ns"]}]
+    end
+
+  end
 end

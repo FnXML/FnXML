@@ -22,13 +22,30 @@ defmodule FnXML.Parser do
     debug: true
   )
 
+  ws = ascii_string([?\s, ?\t, ?\n], min: 1)
   tag_chars = [?a..?z, ?A..?Z, ?0..?9, ?_, ?-, ?.]
   tag_id = ascii_string(tag_chars, min: 1)
   ns_id = ascii_string([?: | tag_chars], min: 1)
-  namespace = tag_id |> ignore(string(":")) |> tag(:namespace) |> reduce(:deconvolute)
-  tag = optional(namespace) |> concat(tag_id) |> tag(:tag) |> reduce(:deconvolute)
-  ws = ascii_string([?\s, ?\n], min: 1)
 
+  defcombinatorp(
+    :namespace,
+    ignore(optional(ws))
+    |> concat(tag_id)
+    |> ignore(optional(ws))
+    |> ignore(string(":"))
+    |> tag(:namespace)
+    |> reduce(:deconvolute)
+  )
+
+  defcombinatorp(
+    :tag_name,
+    optional(parsec(:namespace))
+    |> ignore(optional(ws))
+    |> concat(tag_id)
+    |> tag(:tag)
+    |> reduce(:deconvolute)
+  )
+  
   defcombinatorp(
     :attributes,
     ignore(optional(ws))
@@ -47,9 +64,10 @@ defmodule FnXML.Parser do
     |> line()
     |> byte_offset()
     |> reduce(:add_loc)
-    |> concat(tag)
+    |> parsec(:tag_name)
     |> optional(parsec(:attributes) |> repeat() |> tag(:attributes))
     |> reduce(:filter_empty_attr)
+    |> ignore(optional(ws))
     |> choice([
       string("/>") |> tag(:close) |> reduce(:set_true),
       ignore(string(">"))
@@ -66,7 +84,8 @@ defmodule FnXML.Parser do
     |> line()
     |> byte_offset()
     |> reduce(:add_loc)
-    |> concat(tag)
+    |> parsec(:tag_name)
+    |> ignore(optional(ws))
     |> ignore(string(">"))
     |> reduce(:close_deconvolute)
     |> unwrap_and_tag(:close)
