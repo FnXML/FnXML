@@ -26,11 +26,12 @@ defmodule FnXML.Stream.NativeDataStruct.Format.Map do
   @impl NDS.Formatter
   def emit(nds, opts \\ [])
   def emit(%NDS{} = nds, opts) do
+    child_fun = Keyword.get(opts, :format_child, fn x -> x end)
     finalize = Keyword.get(opts, :format_finalize, &default_finalize/1)
     # finalize is run on the final map result
 
     # emit child is the main function of this module
-    [emit_child(nds, opts)] |> Enum.into(%{}) |> finalize.()
+    [emit_child(nds, opts)] |> child_fun.() |> Enum.into(%{}) |> finalize.()
   end
 
   # emits a list by iterating over each item
