@@ -1,35 +1,27 @@
 defmodule FnXML.Stream.Decoder do
 
+  alias FnXML.Element
+  
   @moduledoc """
   A simple XML stream decoder, implemented using behaviours.
   """
 
+  @callback handle_prolog(meta :: list, path :: list, acc :: list, opts :: list) :: list
   @callback handle_open(meta :: list, path :: list, acc :: list, opts :: list) :: list
-  @callback handle_text(text :: binary, path :: list, acc :: list, opts :: list) :: list
   @callback handle_close(meta :: list, path :: list, acc :: list, opts :: list) :: list
+  @callback handle_text(meta :: list, path :: list, acc :: list, opts :: list) :: list
+  @callback handle_comment(meta :: list, path :: list, acc :: list, opts :: list) :: list
+  @callback handle_proc_inst(meta :: list, path :: list, acc :: list, opts :: list) :: list
 
   def decode(stream, module \\ FnXML.Stream.Decoder.Default, opts \\ []) do
-    # the fn map creates callback functions for the module which include the options.
-    fn_map = %{
-      open_fn: fn element, path, acc -> module.handle_open(element, path, acc, opts) end,
-      text_fn: fn element, path, acc -> module.handle_text(element, path, acc, opts) end,
-      close_fn: fn element, path, acc -> module.handle_close(element, path, acc, opts) end,
-    }
-    
-    stream |> FnXML.Stream.transform(decode_fn(fn_map))
+    stream |> FnXML.Stream.transform(decode_fn(module, opts))
   end
 
-  def decode_fn(fn_map) do
-    fn element, path, acc -> decode_element(element, path, acc, fn_map) end
+  def decode_fn(module, opts) do
+    fn {id, meta}, path, acc -> apply(module, :"handle_#{id}", [meta, path, acc, opts]) end
   end
 
-  def decode_element(element, path, acc, fn_map)
-
-  def decode_element({:open, meta}, path, acc, fn_map), do: fn_map.open_fn.(meta, path, acc)
-
-  def decode_element({:text, [text | _]}, path, acc, fn_map), do: fn_map.text_fn.(text, path, acc)
-
-  def decode_element({:close, meta}, path, acc, fn_map), do: fn_map.close_fn.(meta, path, acc)
+  def skip(_meta, _path, acc, _opts), do: acc
 end
 
 

@@ -3,6 +3,7 @@ defmodule FnXML.Stream.NativeDataStruct.Decoder do
   This Module is used to decode an XML stream to a Native Data Struct (NDS).
   """
 
+  alias FnXML.Element
   alias FnXML.Stream.NativeDataStruct, as: NDS
 
   @behaviour FnXML.Stream.Decoder
@@ -21,17 +22,22 @@ defmodule FnXML.Stream.NativeDataStruct.Decoder do
   def finalize_nds(nds), do: %NDS{ nds | content: Enum.reverse(nds.content) }
 
   @impl true
+  def handle_prolog(_meta, _path, acc, _opts), do: acc
+  
+  @impl true
   @doc """
   creates an NDS struct copies any matching attributes from meta into the struct
   pushes the struct on to the accumulator
   """
-  def handle_open(meta, _path, acc, _opts), do: [ struct(NDS, meta |> Enum.into(%{})) | acc ]
-
-  @impl true
-  @doc """
-  adds text to the current NDS struct
-  """
-  def handle_text(text, _path, acc, _opts), do: update_content(acc, text)
+  def handle_open(meta, _path, acc, _opts) do
+    {tag, ns} = Element.tag(meta)
+    meta =
+      Keyword.drop(meta, [:tag])
+      |> Keyword.put(:tag, tag)
+      |> Keyword.put(:namespace, ns)
+    
+    [ struct(NDS, meta |> Enum.into(%{})) | acc ]
+  end
 
   @impl true
   @doc """
@@ -42,4 +48,16 @@ defmodule FnXML.Stream.NativeDataStruct.Decoder do
   def handle_close(_meta, [_path], [nds], _opts), do: {finalize_nds(nds), []}
   # this case happens when we are closing a child tag on the stack
   def handle_close(_meta, _path, [child | acc], _opts), do: update_content(acc, finalize_nds(child))
+
+  @impl true
+  @doc """
+  adds text to the current NDS struct
+  """
+  def handle_text(meta, _path, acc, _opts), do: update_content(acc, Element.content(meta))
+
+  @impl true
+  def handle_comment(_meta, _path, acc, _opts), do: acc
+
+  @impl true
+  def handle_proc_inst(_meta, _path, acc, _opts), do: acc
 end
