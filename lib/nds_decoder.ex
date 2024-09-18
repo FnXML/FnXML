@@ -31,10 +31,12 @@ defmodule FnXML.Stream.NativeDataStruct.Decoder do
   """
   def handle_open(meta, _path, acc, _opts) do
     {tag, ns} = Element.tag(meta)
+    loc = Element.position(meta)
     meta =
       Keyword.drop(meta, [:tag])
       |> Keyword.put(:tag, tag)
       |> Keyword.put(:namespace, ns)
+      |> Keyword.put(:source, [loc])
     
     [ struct(NDS, meta |> Enum.into(%{})) | acc ]
   end

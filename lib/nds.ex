@@ -47,6 +47,7 @@ defmodule FnXML.Stream.NativeDataStruct do
     namespace: "",
     attributes: [],
     content: [],
+    source: [{0, 0}],
     private: %{}               # private data for the encoder/decoder
 
   @doc """
