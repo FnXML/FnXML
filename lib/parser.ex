@@ -2,6 +2,8 @@ defmodule FnXML.Parser do
   @moduledoc """
   XML Parser: This parser emits a stream of XML tags and text.
 
+  This parser attempts to follow the spcification at: https://www.w3.org/TR/xml
+
   It is designed to be used with Streams.  The parser emits 3 different types of items:
   {:open, [... open tag data...]}
   {:close, [... close tag data...]}
@@ -10,172 +12,49 @@ defmodule FnXML.Parser do
   These are available as a stream of items which can be processed by other stream functions.
   """
   import NimbleParsec
-  import FnXML.Parser.Helpers
+
+  alias FnXML.Parser.Element
 
   @doc """
   Basic XML Parser, parses to a stream of tags and text.  This makes it possible to process XML as a stream.
   """
-  # |> concat(repeat(parsec(:node))) |> eos()
-  defparsec(
-    :element,
-    parsec(:node),
-    debug: true
-  )
 
-  ws = ascii_string([?\s, ?\t, ?\n], min: 1)
-  tag_chars = [?a..?z, ?A..?Z, ?0..?9, ?_, ?-, ?.]
-  tag_id = ascii_string(tag_chars, min: 1)
-  ns_id = ascii_string([?: | tag_chars], min: 1)
+  defparsec(:prolog, optional(Element.prolog))
 
-  defcombinatorp(
-    :namespace,
-    ignore(optional(ws))
-    |> concat(tag_id)
-    |> ignore(optional(ws))
-    |> ignore(string(":"))
-    |> tag(:namespace)
-    |> reduce(:deconvolute)
-  )
-
-  defcombinatorp(
-    :tag_name,
-    optional(parsec(:namespace))
-    |> ignore(optional(ws))
-    |> concat(tag_id)
-    |> tag(:tag)
-    |> reduce(:deconvolute)
-  )
-  
-  defcombinatorp(
-    :attributes,
-    ignore(optional(ws))
-    |> concat(ns_id)
-    |> ignore(optional(ws))
-    |> ignore(string("="))
-    |> ignore(optional(ws))
-    |> parsec(:quoted_string)
-    |> reduce(:into_keyword)
-  )
-
-  defcombinatorp(
-    :open_tag,
-    ignore(optional(ws))
-    |> ignore(string("<"))
-    |> line()
-    |> byte_offset()
-    |> reduce(:add_loc)
-    |> parsec(:tag_name)
-    |> optional(parsec(:attributes) |> repeat() |> tag(:attributes))
-    |> reduce(:filter_empty_attr)
-    |> ignore(optional(ws))
-    |> choice([
-      string("/>") |> tag(:close) |> reduce(:set_true),
-      ignore(string(">"))
-    ])
-    |> reduce(:deconvolute)
-    |> reduce(:sort)
-    |> unwrap_and_tag(:open)
-  )
-
-  defcombinatorp(
-    :close_tag,
-    ignore(optional(ws))
-    |> ignore(string("</"))
-    |> line()
-    |> byte_offset()
-    |> reduce(:add_loc)
-    |> parsec(:tag_name)
-    |> ignore(optional(ws))
-    |> ignore(string(">"))
-    |> reduce(:close_deconvolute)
-    |> unwrap_and_tag(:close)
-  )
-
-  defcombinatorp(
-    :text,
-    ascii_string([not: ?<], min: 1)
-    |> line()
-    |> byte_offset()
-    |> reduce(:add_loc)
-    |> unwrap_and_tag(:text)
-  )
-
-  defcombinatorp(
-    :quoted_string,
-    # " help the formatters
-    choice([quote_by_delimiter(?"), quote_by_delimiter(?')])
-  )
-
-  defcombinatorp(
-    :xml_header,
-    ignore(optional(ws))
-    |> ignore(string("<"))
-    |> quote_by_delimiter(??)
-    |> ignore(string(">"))
-  )
-
-  defcombinatorp(
-    :node,
-    ignore(optional(parsec(:xml_header)))
-    |> choice([parsec(:open_tag), parsec(:close_tag), parsec(:text)])
-  )
-
-
-  # defp reverse(_rest, list, context, _line, _offset) do
-  #   {Enum.reverse(list), context}
-  # end
-
-  defp into_keyword([k | [v]]), do: {k, v}
-
-  defp close_deconvolute([loc | [{:tag, _} = tag]]), do: [tag] ++ loc
-  defp close_deconvolute([loc | [tag]]), do: tag ++ loc
-
-  defp deconvolute([{tag, [ns | [t]]}]), do: [{tag, t}, ns]
-  defp deconvolute([{tag, [h | _t]}]), do: {tag, h}
-  defp deconvolute([list, {:close, true} = h]), do: [h | list]
-  defp deconvolute([{:tag, name}]), do: [tag: name]
-  defp deconvolute([[loc: loc], tag]), do: [{:loc, loc} | tag]
-  defp deconvolute([list]), do: list
-
-  defp filter_empty_attr([loc, {:tag, tag}, {:attributes, []}]), do: [tag: tag] ++ loc
-  defp filter_empty_attr([loc, tag, {:attributes, []}]), do: tag ++ loc
-  defp filter_empty_attr([loc, {:tag, tag}, attr]), do: [attr | [tag: tag]] ++ loc
-  defp filter_empty_attr([loc, tag, attr]), do: [attr | tag] ++ loc
-
-  defp set_true([{:close, _}]), do: {:close, true}
-
-  defp add_loc([{[{[], line}], offset}]), do: [loc: {line, offset}]
-  defp add_loc([{[{[data], line}], offset}]), do: [data, loc: {line, offset}]
-
-  #  defp add_line_and_offset([{[{[{label, tag}], line}], offset}]), do: {label, tag, line, offset}
-  #  defp add_line([{[{label, tag}], line}]), do: {label, tag, line}
-
-  defp sort([list]) do
-    key_order = [:tag, :close, :namespace, :attributes]
-    index = fn list, item -> Enum.find_index(list, &Kernel.==(&1, item)) end
-    Enum.sort_by(list, fn {k, _} -> index.(key_order, k) end)
-  end
-
-  def parse_next({"", loc, offset}), do: {:halt, {"", loc, offset}}
-
-  def parse_next({xml, loc, offset}) do
-    {:ok, [next_item], rest, _, loc, offset} = element__0(xml, [], [], [], loc, offset)
-
-    # this case checks for empty tags "close: true", and converts it to eh [{:open [ta: ...]}{:close [tag: ...]}] form
-    case next_item do
-      {:open, [{:tag, tag}, {:close, true}, {:namespace, ns} | meta]} ->
-        {[open: [{:tag, tag}, {:namespace, ns} | meta], close: [tag: tag, namespace: ns]], {rest, loc, offset}}
-      {:open, [{:tag, tag}, {:close, true} | meta]} ->
-        {[open: [{:tag, tag} | meta], close: [tag: tag]], {rest, loc, offset}}
-      _ -> {[next_item], {rest, loc, offset}}
+  defparsec(:next_element, Element.next())
+    
+  def parse_prolog(xml) do
+    case prolog(xml) do
+      {:ok, [prolog], xml, %{}, line, abs_char} -> {[prolog], xml, line, abs_char}
+      {:ok, [], xml, %{}, line, abs_char} -> {xml, line, abs_char}
     end
   end
 
-  def parse(xml) do
-    Stream.resource(
-      fn -> {xml, {1, 0}, 0} end,
-      &parse_next/1,
-      fn _ -> :ok end
-    )
+  def parse_next({"", line, abs_char}), do: {:halt, {"", line, abs_char}}
+  def parse_next({xml, line, abs_char}) do
+    {:ok, [{id, meta} | elements ] = items, rest, _, line, abs_char} = next_element__0(xml, [], [], [], line, abs_char)
+    state = {rest, line, abs_char}
+
+    # Note about the following logic:
+    #   XML has a special notation for an empty tag: "<a/>" which is equivalent to "<a></a>".
+    #   My choice here is to always emit the empty tag as "<a></a>" because it removes
+    #   special case logic from the code downstream.  Code that formats XML can easily
+    #   detect and emit "<a/>" if it wants to.
+    if id == :open and Keyword.get(meta, :close, false) do
+      tag = Keyword.get(meta, :tag)
+      new_meta = Enum.filter(meta, fn {k, _} -> k != :close end)
+      
+      {[{:open, new_meta}, {:close, [tag: tag]} | elements], state}
+    else
+      {items, state}
+    end
+    
   end
+
+  def parse_next({[prolog], xml, line, abs_char}) do
+    {:ok, next_item, rest, _, line, abs_char} = next_element__0(xml, [], [], [], line, abs_char)
+    {[prolog | next_item], {rest, line, abs_char}}
+  end
+
+  def parse(xml), do: Stream.resource(fn -> parse_prolog(xml) end, &parse_next/1, fn _ -> :ok end)
 end
