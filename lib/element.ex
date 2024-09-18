@@ -4,6 +4,8 @@ defmodule FnXML.Element do
   This module provides functions for working with elements of an XML stream
   """
 
+  def id_list(), do: [:prolog, :open, :close, :text, :comment, :proc_inst]
+  
   @doc """
   given a tags open/close meta data return the tag id as a tuple of
   the form {tag_id, namespace}
@@ -16,10 +18,17 @@ defmodule FnXML.Element do
   iex> FnXML.Element.tag({:open, [tag: "foo"]})
   {"foo", ""}
 
-  iex> FnXML.Element.tag({:open, [tag: "foo", namespace: "matrix"]})
+  iex> FnXML.Element.tag({:open, [tag: "matrix:foo"]})
   {"foo", "matrix"}
   """
-  def tag(meta) when is_list(meta), do: {Keyword.get(meta, :tag), Keyword.get(meta, :namespace, "")}
+  def tag(meta) when is_list(meta) do
+    ns_tag = Keyword.get(meta, :tag, "") |> String.split(":", parts: 2)
+    if length(ns_tag) == 1 do
+      {Enum.at(ns_tag, 0), ""}
+    else
+      {Enum.at(ns_tag, 1), Enum.at(ns_tag, 0)}
+    end
+  end
   def tag({_element, meta}) when is_list(meta), do: tag(meta)
 
   @doc """
@@ -82,6 +91,17 @@ defmodule FnXML.Element do
   """
   def attribute_map(meta) when is_list(meta), do: attributes(meta) |> Enum.into(%{})
   def attribute_map({:open, meta}) when is_list(meta), do: attribute_map(meta)
+
+  @doc """
+  given a text or comment element, retrieve the content
+
+  ## Example
+  iex> FnXML.Element.content({:text, [content: "foo"]})
+  "foo"
+  """
+  
+  def content(meta) when is_list(meta), do: Keyword.get(meta, :content, "")
+  def content({_, meta}) when is_list(meta), do: content(meta)
   
   @doc """
   given an elements meta data return a tuple with `{line position,
@@ -92,11 +112,11 @@ defmodule FnXML.Element do
 
   ## Examples
 
-  iex> FnXML.Element.position({:open, [tag: "foo", loc: {{2, 15}, 19}]})
+  iex> FnXML.Element.position({:open, [tag: "foo", loc: {2, 15, 19}]})
   {2, 4}
   """
   def position(meta) when is_list(meta) do
-    {{line, line_start}, abs_pos} = Keyword.get(meta, :loc, {{0, 0}, 0})
+    {line, line_start, abs_pos} = Keyword.get(meta, :loc, {0, 0, 0})
     {line, abs_pos - line_start}
   end
   def position({_element, meta}) when is_list(meta), do: position(meta)

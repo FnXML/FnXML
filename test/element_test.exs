@@ -10,7 +10,7 @@ defmodule FnXML.ElementsTest do
       assert Element.tag({:open, [tag: "foo"]}) == {"foo", ""}
     end
     test "tag with namespace" do
-      assert Element.tag({:open, [tag: "foo", namespace: "bar"]}) == {"foo", "bar"}
+      assert Element.tag({:open, [tag: "bar:foo"]}) == {"foo", "bar"}
     end
   end
 
@@ -39,6 +39,15 @@ defmodule FnXML.ElementsTest do
     end
     test "element with attributes" do
       assert Element.attribute_map({:open, [tag: "foo", attributes: [{"bar", "baz"}, {"a", "1"}]]}) == %{"bar" => "baz", "a" => "1"}
+    end
+  end
+
+  describe "content" do
+    test "element without content" do
+      assert Element.content({:open, [tag: "foo"]}) == ""
+    end
+    test "element with content" do
+      assert Element.content({:open, [tag: "foo", content: "biz"]}) == "biz"
     end
   end
         
