@@ -55,7 +55,6 @@ defmodule FnXML.Stream.NativeDataStruct.Format.Map do
     { nds.tag,
       meta_fun.(nds)   # format meta-data
       |> Map.merge(attr)
-      #|> Map.merge(id_list(nds, opts))  # this needs to be adjusted to fix for the new format:
       
       # iterate over the text and children and emit them --> convert this to content
       |> Map.merge(
