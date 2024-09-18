@@ -11,6 +11,8 @@ defmodule FnXML.StreamTest do
     |> Enum.all?(fn line -> String.starts_with?(line, prefix) end)
   end
 
+  def strip_ws(str), do: String.replace(str, ~r/[\s\r\n]+/, "")
+
   test "test tap" do
     xml = "<foo a='1'>first element<bar>nested element</bar></foo>"
 
@@ -22,10 +24,27 @@ defmodule FnXML.StreamTest do
     |> all_lines_start_with?("test_stream:")
   end
 
-  test "test to_xml_text" do
-    xml = "<foo a=\"1\">first element<bar>nested element</bar></foo>"
+  describe "to_xml" do
+    @tag focus: true
+    test "basic" do
+      xml = "<foo a=\"1\">first element<bar>nested element</bar></foo>"
+      
+      assert (FnXML.Parser.parse(xml) |> FnXML.Stream.to_xml()) |> Enum.join() == xml
+    end
 
-    assert (FnXML.Parser.parse(xml) |> FnXML.Stream.to_xml()) |> Enum.join() == xml
+    test "with all elements" do
+      xml = """
+      <?xml version="1.0" encoding="UTF-8"?>
+      <foo a=\"1\">first element
+        <!--comment-->
+        <?pi-test this is processing instruction?>
+        <bar>nested element</bar>
+        <![CDATA[<bar>nested element</bar>]]>
+      </foo>
+      """
+      
+      assert FnXML.Parser.parse(xml) |> FnXML.Stream.to_xml() |> Enum.join() |> strip_ws() == strip_ws(xml)
+    end
   end
 
 
@@ -40,9 +59,9 @@ defmodule FnXML.StreamTest do
       
       assert result == [
         open: [tag: "foo", attributes: [{"a", "1"}]],
-        text: ["first element"],
+        text: [content: "first element"],
         open: [tag: "bar"],
-        text: ["nested element"],
+        text: [content: "nested element"],
         close: [tag: "bar"],
         close: [tag: "foo"]
       ]

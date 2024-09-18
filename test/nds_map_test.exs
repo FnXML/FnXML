@@ -56,7 +56,6 @@ defmodule FnXML.Stream.NativeDataStruct.Format.MapTest do
     assert encode == "<foo/>"
   end
 
-  @tag :skip
   test "parse short tag" do
      apply_test("<bar/>", %{"bar" => %{}}, format_meta: &NDS.no_meta/1)
    end
@@ -106,11 +105,8 @@ defmodule FnXML.Stream.NativeDataStruct.Format.MapTest do
       "<root ns:myapp=\"http://org/app/\"><nested><myapp:info>content</myapp:info></nested></root>",
       %{
         "root" => %{
-          "nested" => %{        
-            "info" => %{
-              "text" => "content",
-              :_meta => %{ namespace: "myapp" }
-            }
+          "nested" => %{
+            "info" => %{:_meta => %{namespace: "myapp"}, "text" => "content"},
           },
           "ns:myapp": "http://org/app/"
         }
@@ -121,6 +117,7 @@ defmodule FnXML.Stream.NativeDataStruct.Format.MapTest do
   end
 
   test "parse tag with attributes" do
+    IO.puts("test start.")
     apply_test(
       "<tag attr1=\"value1\" attr2=\"value2\"/>",
       %{"tag" => %{attr1: "value1", attr2: "value2"}},

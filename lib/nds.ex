@@ -59,11 +59,11 @@ defmodule FnXML.Stream.NativeDataStruct do
       [
         open: [tag: "root", attributes: [{"c", "hi"}, {"d", "4"}]],
         open: [tag: "a"],
-        text: ["hi"],
+        text: [content: "hi"],
         close: [tag: "a"],
         open: [tag: "b", attributes: [{"a", "1"}, {"b", "1"}]],
         open: [tag: "_"],
-        text: ["info"],
+        text: [content: "info"],
         close: [tag: "_"],
         close: [tag: "b"],
         close: [tag: "root"]

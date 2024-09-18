@@ -9,7 +9,7 @@ defmodule FnXML.Stream.NativeDataStruct.Format.XMLTest do
     test "value" do
       assert NDS.encode("world", tag: "hello") == [
         open: [tag: "hello"],
-        text: ["world"],
+        text: [content: "world"],
         close: [tag: "hello"]
       ]
     end
@@ -18,7 +18,7 @@ defmodule FnXML.Stream.NativeDataStruct.Format.XMLTest do
       map = %{ "text" => "hi", :a => "1" }
       assert NDS.encode(map, tag: "foo") == [
         open: [tag: "foo", attributes: [{"a", "1"}]],
-        text: ["hi"],
+        text: [content: "hi"],
         close: [tag: "foo"]
       ]
     end
@@ -35,9 +35,9 @@ defmodule FnXML.Stream.NativeDataStruct.Format.XMLTest do
 
       assert NDS.encode(map, tag_from_parent: "hello") == [
         open: [tag: "hello", attributes: [{"a", "1"}]],
-        text: ["world"],
+        text: [content: "world"],
         open: [tag: "child", attributes: [{"b", "2"}]],
-        text: ["child world"],
+        text: [content: "child world"],
         close: [tag: "child"],
         close: [tag: "hello"]
       ]
@@ -56,15 +56,15 @@ defmodule FnXML.Stream.NativeDataStruct.Format.XMLTest do
 
       assert NDS.encode(map, tag_from_parent: "hello") == [
         open: [tag: "hello", attributes: [{"a", "1"}]],
-        text: ["world"],
+        text: [content: "world"],
         open: [tag: "child", attributes: [{"b", "1"}]],
-        text: ["child world"],
+        text: [content: "child world"],
         close: [tag: "child"],
         open: [tag: "child", attributes: [{"b", "2"}]],
-        text: ["child alt world"],
+        text: [content: "child alt world"],
         close: [tag: "child"],
         open: [tag: "child", attributes: [{"b", "3"}]],
-        text: ["child other world"],
+        text: [content: "child other world"],
         close: [tag: "child"],
         close: [tag: "hello"]
       ]

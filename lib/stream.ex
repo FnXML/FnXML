@@ -20,9 +20,9 @@ defmodule FnXML.Stream do
   ## Example
 
       iex> [
-      iex>   {:open, [tag: "foo", namespace: "fizz", attributes: [{"a", "1"}]]},
-      iex>   {:text, ["hello"]},
-      iex>   {:close, [tag: "foo", namespace: "fizz"]}
+      iex>   {:open, [tag: "fizz:foo", attributes: [{"a", "1"}]]},
+      iex>   {:text, [content: "hello"]},
+      iex>   {:close, [tag: "fizz:foo"]}
       iex> ]
       iex> |> FnXML.Stream.to_xml()
       iex> |> Enum.join()
@@ -34,7 +34,10 @@ defmodule FnXML.Stream do
     pretty = Keyword.get(opts, :pretty, false)
     indent = Keyword.get(opts, :indent, 2)
 
-    fun = fn element, path, acc -> to_xml_fn(element, path, acc, pretty, indent) end
+    fun = fn
+      element, path, acc ->
+        to_xml_fn(element, path, acc, pretty, indent)
+    end
     transform(stream, fun)
   end
 
@@ -48,28 +51,58 @@ defmodule FnXML.Stream do
     end
   end
 
+  defp add_leading_space(str = ""), do: str
+  defp add_leading_space(str), do: " " <> str
+    
+  defp format_attributes(attributes) do
+    attributes
+    |> Enum.map(fn {k, v} -> "#{k}=\"#{v}\"" end)
+    |> Enum.join(" ")
+    |> add_leading_space()
+  end
+  
+  defp format_element({:prolog, parts}, path, _acc) do
+    tag = Element.tag(parts) |> Element.tag_name()
+    attrs = format_attributes(Element.attributes(parts))
+
+    { length(path), "<?#{tag}#{attrs}?>" }
+  end
+
   defp format_element({:open, parts}, path, _acc) do
     tag = Element.tag(parts) |> Element.tag_name()
     close = %{true: "/", false: ""}[Element.close?(parts)]
-    attrs =
-      Element.attributes(parts)
-      |> Enum.map(fn {k, v} -> "#{k}=\"#{v}\"" end)
-      |> Enum.join(" ")
-      |> fn
-        "" -> ""
-        x -> " " <> x
-      end.()
+    attrs = format_attributes(Element.attributes(parts))
 
     { length(path) - 1, "<#{tag}#{attrs}#{close}>" }
   end
-
-  defp format_element({:text, [text | _]}, path, _acc), do: { length(path), text }
 
   defp format_element({:close, parts}, path, _acc) do
     tag = Element.tag(parts) |> Element.tag_name()
 
     { length(path) - 1, "</#{tag}>" }
   end
+
+  defp format_element({:text, parts}, path, _acc) do
+    content = Element.content(parts)
+
+    if Regex.match?(~r/[<>&]/, content) do
+      { length(path), "<![CDATA[#{content}]]>" }
+    else
+      { length(path), content }
+    end
+  end
+
+  defp format_element({:comment, parts}, path, _acc) do
+    { length(path), "<!--#{Element.content(parts)}-->" }
+  end
+
+  defp format_element({:proc_inst, parts}, path, _acc) do
+    tag = Element.tag(parts) |> Element.tag_name()
+    content = Element.content(parts)
+
+    { length(path), "<?#{tag} #{content}?>" }
+  end
+
 
   @doc """
   Apply a transform function to a stream of XML elements.
@@ -93,6 +126,8 @@ defmodule FnXML.Stream do
 
   See XMLStreamTools.Inspector for an example of how to use this module.
   """
+  @valid_element_id Element.id_list()
+  
   def transform(stream, acc \\ [], fun) do
     stream
     |> Stream.chunk_while(initial_acc(acc, fun), &process_item/2, &after_fn/1)
@@ -105,13 +140,6 @@ defmodule FnXML.Stream do
     new_stack = if not Element.close?(parts), do: [tag | stack], else: stack
 
     fun.(element, new_stack, acc) |> next(new_stack, fun)
-  end
-
-  defp process_item({:text, _} = element, {[], _, _}) do
-    error(element, "Text element outside of a tag, a root elment is required")
-  end
-  defp process_item({:text, _} = element, {stack, acc, fun}) do
-    fun.(element, stack, acc) |> next(stack, fun)
   end
 
   defp process_item({:close, parts} = element, {[], _, _}) do
@@ -128,8 +156,19 @@ defmodule FnXML.Stream do
     end
   end
 
-  defp process_item(element, {_, _, _}),
-    do: error(element, "invalid element: #{inspect(element)}")
+  defp process_item({:text, _} = element, {[], acc, fun}) do
+    if Element.content(element) |> String.match?(~r/^[\s\n]*$/) do
+      {"", acc} |> next([], fun)
+    else
+      error(element, "Text element outside of a tag, a root elment is required")
+    end
+  end
+  defp process_item({id, _} = element, {stack, acc, fun}) when id in @valid_element_id do
+    fun.(element, stack, acc) |> next(stack, fun)
+  end
+  defp process_item({id, _} = element, {_stack, _acc, _fun}) do
+    error(element, "unknown element type #{inspect(id)}")
+  end
 
   defp next({element, acc}, stack, fun), do: {:cont, element, {stack, acc, fun}}
   defp next(acc, stack, fun), do: {:cont, {stack, acc, fun}}
@@ -180,9 +219,9 @@ defmodule FnXML.Stream do
     iex> FnXML.Parser.parse("<foo>with loc meta</foo>")
     iex> |> Enum.map(fn x -> x end)
     [
-      open: [{:tag, "foo"}, {:loc, {{1, 0}, 1}}],
-      text: ["with loc meta", {:loc, {{1, 0}, 18}}],
-      close: [{:tag, "foo"}, {:loc, {{1, 0}, 20}}]
+      open: [tag: "foo", loc: {1, 0, 1}],
+      text: [content: "with loc meta", loc: {1, 0, 5}],
+      close: [tag: "foo", loc: {1, 0, 19}]
     ]  
 
     iex> FnXML.Parser.parse("<foo>no loc meta</foo>")
@@ -190,7 +229,7 @@ defmodule FnXML.Stream do
     iex> |> Enum.map(fn x -> x end)
     [
       {:open, [tag: "foo"]},
-      {:text, ["no loc meta"]},
+      {:text, [content: "no loc meta"]},
       {:close, [tag: "foo"]}
     ]  
   
@@ -219,12 +258,12 @@ defmodule FnXML.Stream do
     iex> FnXML.Stream.filter(stream, fn _, [{tag, ""} | _], _ -> {tag == "bar", []} end)
     iex> |> Enum.map(fn x -> x end)
     [
-      {:open, [tag: "bar", loc: {{1, 0}, 6}]},
-      {:text, ["1", {:loc, {{1, 0}, 11}}]},
-      {:close, [tag: "bar", loc: {{1, 0}, 13}]},
-      {:open, [tag: "bar", loc: {{1, 0}, 18}]},
-      {:text, ["2", {:loc, {{1, 0}, 23}}]},
-      {:close, [tag: "bar", loc: {{1, 0}, 25}]}
+      {:open, [tag: "bar", loc: {1, 0, 6}]},
+      {:text, [content: "1", loc: {1, 0, 10}]},
+      {:close, [tag: "bar", loc: {1, 0, 12}]},
+      {:open, [tag: "bar", loc: {1, 0, 18}]},
+      {:text, [content: "2", loc: {1, 0, 22}]},
+      {:close, [tag: "bar", loc: {1, 0, 24}]}
     ]  
   """
   def filter(stream, fun, acc \\ []) do

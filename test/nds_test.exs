@@ -11,7 +11,7 @@ defmodule FnXML.Stream.NativeDataStructTest do
       map = "world"
       assert NDS.encode(map, tag: "hello") == [
         open: [tag: "hello"],
-        text: ["world"],
+        text: [content: "world"],
         close: [tag: "hello"]
       ]
     end
@@ -20,10 +20,10 @@ defmodule FnXML.Stream.NativeDataStructTest do
       map = ["hello", "world"]
       assert NDS.encode(map, tag: "greeting") == [
         open: [tag: "greeting"],
-        text: ["hello"],
+        text: [content: "hello"],
         close: [tag: "greeting"],
         open: [tag: "greeting"],
-        text: ["world"],
+        text: [content: "world"],
         close: [tag: "greeting"]
       ]
     end
@@ -40,7 +40,7 @@ defmodule FnXML.Stream.NativeDataStructTest do
       map = %{ "text" => "hi" }
       assert NDS.encode(map, [tag: "minimal"]) == [
         open: [tag: "minimal"],
-        text: ["hi"],
+        text: [content: "hi"],
         close: [tag: "minimal"]
       ]
     end
@@ -51,9 +51,9 @@ defmodule FnXML.Stream.NativeDataStructTest do
         "t" => ["bar"]
       }
       assert NDS.encode(map, [tag_from_parent: "foo", namespace: "ns", order: ["t"]]) == [
-        open: [tag: "foo", namespace: "ns", attributes: [{"a", "1"}]],
-        text: ["bar"],
-        close: [tag: "foo", namespace: "ns"]
+        open: [tag: "ns:foo", attributes: [{"a", "1"}]],
+        text: [content: "bar"],
+        close: [tag: "ns:foo"]
       ]
     end
 
@@ -77,25 +77,25 @@ defmodule FnXML.Stream.NativeDataStructTest do
         |> NDS.Format.XML.emit()
       
       assert encode == [
-        open: [tag: "bar", namespace: "foo", attributes: [{"a", "1"}, {"ook", "2"}]],
+        open: [tag: "foo:bar", attributes: [{"a", "1"}, {"ook", "2"}]],
         open: [tag: "baz", attributes: [{"a", "1"}]],
-        text: ["message"],
+        text: [content: "message"],
         close: [tag: "baz"],
         open: [tag: "baz", attributes: [{"b", "2"}]],
-        text: ["other message"],
+        text: [content: "other message"],
         close: [tag: "baz"],
         open: [tag: "baz"],
-        text: ["other message"],
+        text: [content: "other message"],
         open: [tag: "deep_tag"],
-        text: ["deep message"],
+        text: [content: "deep message"],
         close: [tag: "deep_tag"],
         close: [tag: "baz"],
-        text: ["text goes between baz and biz tags"],
+        text: [content: "text goes between baz and biz tags"],
         open: [tag: "biz"],
-        text: ["last tag message"],
+        text: [content: "last tag message"],
         close: [tag: "biz"],
-        text: ["at the end"],
-        close: [tag: "bar", namespace: "foo"]
+        text: [content: "at the end"],
+        close: [tag: "foo:bar"]
       ]
 
       assert FnXML.Stream.to_xml(encode, pretty: true) |> Enum.join() == """

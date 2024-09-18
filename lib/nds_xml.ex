@@ -14,11 +14,11 @@ defmodule FnXML.Stream.NativeDataStruct.Format.XML do
       [
         open: [tag: "foo", attributes: [{"c", "hi"}, {"d", "4"}]],
         open: [tag: "a"],
-        text: ["hi"],
+        text: [content: "hi"],
         close: [tag: "a"],
         open: [tag: "b", attributes: [{"a", "1"}, {"b",  "1"}]],
         open: [tag: "info"],
-        text: ["info"],
+        text: [content: "info"],
         close: [tag: "info"],
         close: [tag: "b"],
         close: [tag: "foo"]
@@ -31,14 +31,14 @@ defmodule FnXML.Stream.NativeDataStruct.Format.XML do
 
   def open_tag(%NDS{tag: tag, namespace: "", attributes: []}), do: {:open, [tag: tag]}
   def open_tag(%NDS{tag: tag, namespace: "", attributes: attrs}), do: {:open, [tag: tag, attributes: attrs]}
-  def open_tag(%NDS{tag: tag, namespace: namespace, attributes: []}), do: {:open, [tag: tag, namespace: namespace]}
+  def open_tag(%NDS{tag: tag, namespace: namespace, attributes: []}), do: {:open, [tag: "#{namespace}:#{tag}"]}
   def open_tag(%NDS{tag: tag, namespace: namespace, attributes: attrs}),
-    do: {:open, [tag: tag, namespace: namespace, attributes: attrs]}
+    do: {:open, [tag: "#{namespace}:#{tag}", attributes: attrs]}
 
   def close({el, [tag | rest]}), do: {el, [tag | [{:close, true} | rest]]}
   
   def close_tag(%NDS{tag: tag, namespace: ""}), do: {:close, [tag: tag]}
-  def close_tag(%NDS{tag: tag, namespace: namespace}), do: {:close, [tag: tag, namespace: namespace]}
+  def close_tag(%NDS{tag: tag, namespace: namespace}), do: {:close, [tag: "#{namespace}:#{tag}"]}
 
   @doc """
   this iterates over content and generates content elements.  It needs to track the order of the content
@@ -53,10 +53,10 @@ defmodule FnXML.Stream.NativeDataStruct.Format.XML do
       [
         {:open, [tag: "foo"]},
         {:open, [tag: "a"]},
-        {:text, ["hello"]},
+        {:text, [content: "hello"]},
         {:close, [tag: "a"]},
         {:open, [tag: "a"]},
-        {:text, ["world"]},
+        {:text, [content: "world"]},
         {:close, [tag: "a"]},
         {:close, [tag: "foo"]}
       ]
@@ -66,28 +66,7 @@ defmodule FnXML.Stream.NativeDataStruct.Format.XML do
     Enum.map(list, &content/1) |> List.flatten()
   end
 
-  def content({:text, _k, text}), do: {:text, [text]}
+  def content({:text, _k, text}), do: {:text, [content: text]}
   def content({:child, _k, %NDS{} = nds}), do: emit(nds)
-  
-  # def content_list(%NDS{} = nds) do
-  #   Enum.reduce(nds.order_id_list, {nds, []}, fn key, {nds, acc} ->
-  #     cond do
-  #       Map.has_key?(nds.child_list, key) -> child(nds, acc, key, nds.child_list[key])
-  #       Map.has_key?(nds.data, key) -> content(nds, acc, key, nds.data[key])
-  #       true -> raise "no key #{key} in child_list or data"
-  #     end
-  #   end)
-  #   |> elem(1)  # return only the accumulator
-  # end
-
-  # def child(nds, acc, _key, child) when is_map(child), do: {nds, acc ++ emit(child) }
-  # def child(nds, acc, key, [child|rest]) do
-  #   { %NDS{nds | child_list: Map.put(nds.child_list, key, rest)}, child(nds, acc, key, child) |> elem(1)}
-  # end
-  
-  # def content(nds, acc, _key, value) when is_binary(value), do: {nds, acc ++ [{:text, [value]}]}
-  # def content(nds, acc, key, [value|rest]) do
-  #   { %NDS{nds | data: Map.put(nds.data, key, rest)}, acc ++ [{:text, [value]}] }
-  # end
 end
-#
+
