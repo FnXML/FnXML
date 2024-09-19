@@ -6,8 +6,8 @@ defmodule FnXML.Stream.NativeDataStruct.DecoderTest do
   doctest NDS.Decoder
 
   test "tag" do
-    result = 
-      [ open: [tag: "a"], close: [tag: "a"] ]
+    result =
+      [open: [tag: "a"], close: [tag: "a"]]
       |> NDS.Decoder.decode()
       |> Enum.at(0)
 
@@ -15,8 +15,8 @@ defmodule FnXML.Stream.NativeDataStruct.DecoderTest do
   end
 
   test "tag with namespace" do
-    result = 
-      [ open: [tag: "ns:a"], close: [tag: "ns:a"] ]
+    result =
+      [open: [tag: "ns:a"], close: [tag: "ns:a"]]
       |> NDS.Decoder.decode()
       |> Enum.at(0)
 
@@ -24,8 +24,8 @@ defmodule FnXML.Stream.NativeDataStruct.DecoderTest do
   end
 
   test "tag with attributes" do
-    result = 
-      [ open: [tag: "a", attributes: [{"b", "c"}, {"d", "e"}]], close: [tag: "a"] ]
+    result =
+      [open: [tag: "a", attributes: [{"b", "c"}, {"d", "e"}]], close: [tag: "a"]]
       |> NDS.Decoder.decode([])
       |> Enum.at(0)
 
@@ -33,8 +33,8 @@ defmodule FnXML.Stream.NativeDataStruct.DecoderTest do
   end
 
   test "tag with text" do
-    result = 
-      [ open: [tag: "a"], text: [content: "b"], close: [tag: "a"] ]
+    result =
+      [open: [tag: "a"], text: [content: "b"], close: [tag: "a"]]
       |> NDS.Decoder.decode([])
       |> Enum.at(0)
 
@@ -51,9 +51,14 @@ defmodule FnXML.Stream.NativeDataStruct.DecoderTest do
       |> NDS.Decoder.decode([])
       |> Enum.at(0)
 
-    assert result == %NDS{tag: "hello", namespace: "ns", attributes: [{"a", "1"}], content: ["world"]}
+    assert result == %NDS{
+             tag: "hello",
+             namespace: "ns",
+             attributes: [{"a", "1"}],
+             content: ["world"]
+           }
   end
-  
+
   test "decode with child" do
     result =
       [
@@ -68,17 +73,17 @@ defmodule FnXML.Stream.NativeDataStruct.DecoderTest do
       |> NDS.Decoder.decode([])
       |> Enum.at(0)
 
-    assert result == 
-      %NDS{
-        tag: "hello",
-        attributes: [{"a", "1"}],
-        namespace: "ns",
-        content: [
-          "hello",
-          %NDS{tag: "child", attributes: [{"b", "2"}], content: ["child world"]},
-          "world"
-        ]
-      }
+    assert result ==
+             %NDS{
+               tag: "hello",
+               attributes: [{"a", "1"}],
+               namespace: "ns",
+               content: [
+                 "hello",
+                 %NDS{tag: "child", attributes: [{"b", "2"}], content: ["child world"]},
+                 "world"
+               ]
+             }
   end
 
   test "decode with child list" do
@@ -102,19 +107,33 @@ defmodule FnXML.Stream.NativeDataStruct.DecoderTest do
       |> Enum.at(0)
 
     assert result ==
-      %NDS{
-        tag: "hello",
-        namespace: "ns",
-        attributes: [{"a", "1"}],
-        content: [
-          "hello",
-          %NDS{tag: "child1", attributes: [{"b", "2"}], content: ["child world"], source: [{2, 1}]},
-          %NDS{tag: "child1", attributes: [{"b", "2"}], content: ["alt world"], source: [{2, 21}]},
-          %NDS{tag: "child2", attributes: [{"b", "2"}], content: ["other worldly"], source: [{3, 1}]},
-          "world"
-        ],
-        source: [{1, 1}]
-      }
+             %NDS{
+               tag: "hello",
+               namespace: "ns",
+               attributes: [{"a", "1"}],
+               content: [
+                 "hello",
+                 %NDS{
+                   tag: "child1",
+                   attributes: [{"b", "2"}],
+                   content: ["child world"],
+                   source: [{2, 1}]
+                 },
+                 %NDS{
+                   tag: "child1",
+                   attributes: [{"b", "2"}],
+                   content: ["alt world"],
+                   source: [{2, 21}]
+                 },
+                 %NDS{
+                   tag: "child2",
+                   attributes: [{"b", "2"}],
+                   content: ["other worldly"],
+                   source: [{3, 1}]
+                 },
+                 "world"
+               ],
+               source: [{1, 1}]
+             }
   end
-  
 end

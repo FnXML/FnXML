@@ -25,6 +25,7 @@ defmodule FnXML.Stream.NativeDataStruct.Format.Map do
   """
   @impl NDS.Formatter
   def emit(nds, opts \\ [])
+
   def emit(%NDS{} = nds, opts) do
     child_fun = Keyword.get(opts, :format_child, fn x -> x end)
     finalize = Keyword.get(opts, :format_finalize, &default_finalize/1)
@@ -52,17 +53,26 @@ defmodule FnXML.Stream.NativeDataStruct.Format.Map do
     # formats the  attributes into a map
     attr = attr_fun.(nds.attributes)
 
-    { nds.tag,
-      meta_fun.(nds)   # format meta-data
+    {
+      nds.tag,
+      # format meta-data
+      meta_fun.(nds)
       |> Map.merge(attr)
-      
+
       # iterate over the text and children and emit them --> convert this to content
       |> Map.merge(
         Enum.reduce(nds.content, %{}, fn
-          text, acc when is_binary(text) -> {"text", text} |> text_fun.() |> emit_data(acc)
-          {:text, _, text}, acc when is_binary(text) -> {"text", text} |> text_fun.() |> emit_data(acc)
-          %NDS{} = nds, acc -> emit_child(nds, opts) |> child_fun.() |> emit_data(acc)
-          {:child, _, nds}, acc -> emit_child(nds, opts) |> child_fun.() |> emit_data(acc)
+          text, acc when is_binary(text) ->
+            {"text", text} |> text_fun.() |> emit_data(acc)
+
+          {:text, _, text}, acc when is_binary(text) ->
+            {"text", text} |> text_fun.() |> emit_data(acc)
+
+          %NDS{} = nds, acc ->
+            emit_child(nds, opts) |> child_fun.() |> emit_data(acc)
+
+          {:child, _, nds}, acc ->
+            emit_child(nds, opts) |> child_fun.() |> emit_data(acc)
         end)
         |> Enum.map(fn
           {k, v} when is_list(v) -> {k, v |> Enum.reverse()}
@@ -81,18 +91,25 @@ defmodule FnXML.Stream.NativeDataStruct.Format.Map do
   def append(list, item) when is_list(list), do: [item | list]
   def append(value, item), do: [item, value]
 
-  def default_meta(%NDS{} = nds)do
+  def default_meta(%NDS{} = nds) do
     namespace = nds.namespace
-    order = if nds.content == [], do: nil, else: Enum.map(nds.content, fn
+
+    order =
+      if nds.content == [],
+        do: nil,
+        else:
+          Enum.map(nds.content, fn
             %NDS{} = nds -> nds.tag
             {:child, _k, nds} -> nds.tag
             val when is_binary(val) -> "text"
             {:text, _k, _val} -> "text"
           end)
-    %{_meta:
-      %{ tag: nds.tag, namespace: namespace, order: order }
-      |> Enum.filter(&filter_empty/1)
-      |> Enum.into(%{})
+
+    %{
+      _meta:
+        %{tag: nds.tag, namespace: namespace, order: order}
+        |> Enum.filter(&filter_empty/1)
+        |> Enum.into(%{})
     }
   end
 
@@ -100,7 +117,7 @@ defmodule FnXML.Stream.NativeDataStruct.Format.Map do
     Enum.map(attr_list, fn
       {k, v} when is_atom(k) -> {k, v}
       {k, v} when is_binary(k) -> {String.to_atom(k), v}
-      {k, v} -> { to_string(k) |> String.to_atom(), v}
+      {k, v} -> {to_string(k) |> String.to_atom(), v}
     end)
     |> Enum.into(%{})
   end
@@ -125,31 +142,52 @@ defmodule FnXML.Stream.NativeDataStruct.Format.Map do
       iex> NDS.Format.Map.default_finalize(map)
       %{"a" => "hello"}
   """
-  def default_finalize(%{__struct__: _} = struct), do: struct   # skip for structs
+  # skip for structs
+  def default_finalize(%{__struct__: _} = struct), do: struct
+
   def default_finalize(map) when is_map(map) do
     if Map.has_key?(map, :__struct__) do
       IO.puts("is a struct")
     end
-    
+
     Enum.map(map, fn
-      {:_meta, _} = meta -> meta
-      {k, %{__struct__: _} = v} -> {k, v}
+      {:_meta, _} = meta ->
+        meta
+
+      {k, %{__struct__: _} = v} ->
+        {k, v}
+
       {k, v} when is_map(v) ->
-        map0 = if (is_nil(v[:_meta]) or (v[:_meta][:namespace] not in [nil, ""])), do: v, else: Map.drop(v, [:_meta])
-        { k, (if length(Map.keys(map0)) == 1 and Map.has_key?(map0, "text"), do: map0["text"], else: default_finalize(v)) }
+        map0 =
+          if is_nil(v[:_meta]) or v[:_meta][:namespace] not in [nil, ""],
+            do: v,
+            else: Map.drop(v, [:_meta])
+
+        {k,
+         if(length(Map.keys(map0)) == 1 and Map.has_key?(map0, "text"),
+           do: map0["text"],
+           else: default_finalize(v)
+         )}
+
       {k, v} when is_list(v) ->
-        { k, Enum.map(v, fn map -> default_finalize(%{k => map}) |> Enum.to_list() |> Enum.at(0) |> elem(1) end) }
+        {k,
+         Enum.map(v, fn map ->
+           default_finalize(%{k => map}) |> Enum.to_list() |> Enum.at(0) |> elem(1)
+         end)}
+
       {k, v} ->
         {k, v}
     end)
     |> Enum.into(%{})
   end
+
   def default_finalize(x), do: x
 
   def default_finalize_item(item) when is_map(item) do
-    if length(Map.keys(item)) == 1 and Map.has_key?(item, "text"), do: item["text"], else: default_finalize(item)
+    if length(Map.keys(item)) == 1 and Map.has_key?(item, "text"),
+      do: item["text"],
+      else: default_finalize(item)
   end
-  def default_finalize_item(item), do: item
-    
-end
 
+  def default_finalize_item(item), do: item
+end

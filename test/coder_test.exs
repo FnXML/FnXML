@@ -10,7 +10,7 @@ defmodule WITSML.CoderTest do
     |> FnXML.Stream.to_xml(opts)
     |> Enum.join()
   end
-  
+
   @tag :skip
   test "decodes a WITSML message" do
     # val = %{
@@ -22,11 +22,13 @@ defmodule WITSML.CoderTest do
     #       %{:uid => "123", "statusWell" => "active"}
     #     ]
     #   }
-# }
-    val = %{ "a" => %{"b" => "b_val"} } |> IO.inspect(label: "Input for decode witsml")
+    # }
+    val =
+      %{"a" => %{"b" => "b_val"}}
+      |> IO.inspect(label: "Input for decode witsml")
+      |> test_encode(pretty: true, tag_from_parent: "root", text_only_children: true)
 
-    |> test_encode(pretty: true, tag_from_parent: "root", text_only_children: true)
-#    |> WITSML.Coder.map_to_xml()
+    #    |> WITSML.Coder.map_to_xml()
     IO.puts("query encode: #{val}")
   end
 end

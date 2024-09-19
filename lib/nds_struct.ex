@@ -34,6 +34,7 @@ defmodule FnXML.Stream.NativeDataStruct.Format.Struct do
   @impl NDS.Formatter
   def emit(meta, opts \\ [])
   def emit(list, opts) when is_list(list), do: Enum.map(list, fn x -> emit(x, opts) end)
+
   def emit(%NDS{} = meta, opts) do
     struct_id = Keyword.get(opts, :struct_id)
     tag_map = Keyword.get(opts, :tag_map, %{})
@@ -42,7 +43,8 @@ defmodule FnXML.Stream.NativeDataStruct.Format.Struct do
     remap_fn.(meta, struct_id, tag_map)
   end
 
-  def remap_fn(_, nil, _), do: raise "struct_id is required"
+  def remap_fn(_, nil, _), do: raise("struct_id is required")
+
   def remap_fn(meta, struct_id, tag_map) do
     s = struct(struct_id)
     keys = Map.keys(s) |> Enum.filter(&(&1 != :__struct__))

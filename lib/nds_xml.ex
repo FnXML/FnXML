@@ -27,16 +27,23 @@ defmodule FnXML.Stream.NativeDataStruct.Format.XML do
   @impl NDS.Formatter
   def emit(nds, opts \\ [])
   def emit(%NDS{content: []} = nds, _opts), do: [open_tag(nds) |> close()]
-  def emit(%NDS{} = nds, _opts), do: [open_tag(nds) ] ++ content_list(nds.content) ++ [close_tag(nds)] 
+
+  def emit(%NDS{} = nds, _opts),
+    do: [open_tag(nds)] ++ content_list(nds.content) ++ [close_tag(nds)]
 
   def open_tag(%NDS{tag: tag, namespace: "", attributes: []}), do: {:open, [tag: tag]}
-  def open_tag(%NDS{tag: tag, namespace: "", attributes: attrs}), do: {:open, [tag: tag, attributes: attrs]}
-  def open_tag(%NDS{tag: tag, namespace: namespace, attributes: []}), do: {:open, [tag: "#{namespace}:#{tag}"]}
+
+  def open_tag(%NDS{tag: tag, namespace: "", attributes: attrs}),
+    do: {:open, [tag: tag, attributes: attrs]}
+
+  def open_tag(%NDS{tag: tag, namespace: namespace, attributes: []}),
+    do: {:open, [tag: "#{namespace}:#{tag}"]}
+
   def open_tag(%NDS{tag: tag, namespace: namespace, attributes: attrs}),
     do: {:open, [tag: "#{namespace}:#{tag}", attributes: attrs]}
 
   def close({el, [tag | rest]}), do: {el, [tag | [{:close, true} | rest]]}
-  
+
   def close_tag(%NDS{tag: tag, namespace: ""}), do: {:close, [tag: tag]}
   def close_tag(%NDS{tag: tag, namespace: namespace}), do: {:close, [tag: "#{namespace}:#{tag}"]}
 
@@ -69,4 +76,3 @@ defmodule FnXML.Stream.NativeDataStruct.Format.XML do
   def content({:text, _k, text}), do: {:text, [content: text]}
   def content({:child, _k, %NDS{} = nds}), do: emit(nds)
 end
-

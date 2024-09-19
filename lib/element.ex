@@ -1,11 +1,10 @@
 defmodule FnXML.Element do
-
   @moduledoc """
   This module provides functions for working with elements of an XML stream
   """
 
   def id_list(), do: [:prolog, :open, :close, :text, :comment, :proc_inst]
-  
+
   @doc """
   given a tags open/close meta data return the tag id as a tuple of
   the form {tag_id, namespace}
@@ -23,12 +22,14 @@ defmodule FnXML.Element do
   """
   def tag(meta) when is_list(meta) do
     ns_tag = Keyword.get(meta, :tag, "") |> String.split(":", parts: 2)
+
     if length(ns_tag) == 1 do
       {Enum.at(ns_tag, 0), ""}
     else
       {Enum.at(ns_tag, 1), Enum.at(ns_tag, 0)}
     end
   end
+
   def tag({_element, meta}) when is_list(meta), do: tag(meta)
 
   @doc """
@@ -99,10 +100,10 @@ defmodule FnXML.Element do
   iex> FnXML.Element.content({:text, [content: "foo"]})
   "foo"
   """
-  
+
   def content(meta) when is_list(meta), do: Keyword.get(meta, :content, "")
   def content({_, meta}) when is_list(meta), do: content(meta)
-  
+
   @doc """
   given an elements meta data return a tuple with `{line position,
   character position}` of the element in the XML stream
@@ -119,5 +120,6 @@ defmodule FnXML.Element do
     {line, line_start, abs_pos} = Keyword.get(meta, :loc, {0, 0, 0})
     {line, abs_pos - line_start}
   end
+
   def position({_element, meta}) when is_list(meta), do: position(meta)
 end

@@ -8,19 +8,20 @@ defmodule FnXML.Stream.NativeDataStruct.Format.XMLTest do
   describe "Format NDS to XML Stream:" do
     test "value" do
       assert NDS.encode("world", tag: "hello") == [
-        open: [tag: "hello"],
-        text: [content: "world"],
-        close: [tag: "hello"]
-      ]
+               open: [tag: "hello"],
+               text: [content: "world"],
+               close: [tag: "hello"]
+             ]
     end
 
     test "basic map" do
-      map = %{ "text" => "hi", :a => "1" }
+      map = %{"text" => "hi", :a => "1"}
+
       assert NDS.encode(map, tag: "foo") == [
-        open: [tag: "foo", attributes: [{"a", "1"}]],
-        text: [content: "hi"],
-        close: [tag: "foo"]
-      ]
+               open: [tag: "foo", attributes: [{"a", "1"}]],
+               text: [content: "hi"],
+               close: [tag: "foo"]
+             ]
     end
 
     test "nested map" do
@@ -34,13 +35,13 @@ defmodule FnXML.Stream.NativeDataStruct.Format.XMLTest do
       }
 
       assert NDS.encode(map, tag_from_parent: "hello") == [
-        open: [tag: "hello", attributes: [{"a", "1"}]],
-        text: [content: "world"],
-        open: [tag: "child", attributes: [{"b", "2"}]],
-        text: [content: "child world"],
-        close: [tag: "child"],
-        close: [tag: "hello"]
-      ]
+               open: [tag: "hello", attributes: [{"a", "1"}]],
+               text: [content: "world"],
+               open: [tag: "child", attributes: [{"b", "2"}]],
+               text: [content: "child world"],
+               close: [tag: "child"],
+               close: [tag: "hello"]
+             ]
     end
 
     test "nested map with child list" do
@@ -48,26 +49,26 @@ defmodule FnXML.Stream.NativeDataStruct.Format.XMLTest do
         :a => "1",
         "text" => "world",
         "child" => [
-          %{ :b => "1", "text" => "child world" },
-          %{ :b => "2", "text" => "child alt world" },
-          %{ :b => "3", "text" => "child other world" }
+          %{:b => "1", "text" => "child world"},
+          %{:b => "2", "text" => "child alt world"},
+          %{:b => "3", "text" => "child other world"}
         ]
       }
 
       assert NDS.encode(map, tag_from_parent: "hello") == [
-        open: [tag: "hello", attributes: [{"a", "1"}]],
-        text: [content: "world"],
-        open: [tag: "child", attributes: [{"b", "1"}]],
-        text: [content: "child world"],
-        close: [tag: "child"],
-        open: [tag: "child", attributes: [{"b", "2"}]],
-        text: [content: "child alt world"],
-        close: [tag: "child"],
-        open: [tag: "child", attributes: [{"b", "3"}]],
-        text: [content: "child other world"],
-        close: [tag: "child"],
-        close: [tag: "hello"]
-      ]
+               open: [tag: "hello", attributes: [{"a", "1"}]],
+               text: [content: "world"],
+               open: [tag: "child", attributes: [{"b", "1"}]],
+               text: [content: "child world"],
+               close: [tag: "child"],
+               open: [tag: "child", attributes: [{"b", "2"}]],
+               text: [content: "child alt world"],
+               close: [tag: "child"],
+               open: [tag: "child", attributes: [{"b", "3"}]],
+               text: [content: "child other world"],
+               close: [tag: "child"],
+               close: [tag: "hello"]
+             ]
     end
   end
 end

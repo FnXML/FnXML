@@ -35,11 +35,20 @@ defmodule FnXML.Parser.Constructs do
 
   def name do
     start_char = [
-      ?a..?z, ?A..?Z, ?:, ?_,
-      0x00C0..0x00D6, 0x00D8..0x00F6, 0x00F8..0x02FF, 0x0370..0x037D, 0x037F..0x1FFF,
+      ?a..?z,
+      ?A..?Z,
+      ?:,
+      ?_,
+      0x00C0..0x00D6,
+      0x00D8..0x00F6,
+      0x00F8..0x02FF,
+      0x0370..0x037D,
+      0x037F..0x1FFF,
       0x200C..0x200D
     ]
-    name_char = [ ?-, ?., ?0..?9, 0x00B7, 0x0300..0x036F, 0x203F..0x2040 | start_char]
+
+    name_char = [?-, ?., ?0..?9, 0x00B7, 0x0300..0x036F, 0x203F..0x2040 | start_char]
+
     ascii_char(start_char)
     |> ascii_string(name_char, min: 0)
     |> reduce({List, :to_string, []})
@@ -53,6 +62,7 @@ defmodule FnXML.Parser.Constructs do
   def sort_components(list, key_order \\ [:tag, :close, :attributes, :loc]) do
     list = List.flatten(list)
     index = fn list, item -> Enum.find_index(list, &Kernel.==(&1, item)) end
+
     Enum.sort_by(list, fn {k, _} -> index.(key_order, k) end)
     |> Enum.filter(fn {_, v} -> v != nil and v != "" and v != [] end)
   end
@@ -66,7 +76,7 @@ defmodule FnXML.Parser.Quoted do
 
   def string(char) do
     ignore(ascii_char([char]))
-    |> repeat(ascii_char([not: char]))
+    |> repeat(ascii_char(not: char))
     |> ignore(ascii_char([char]))
     |> reduce({List, :to_string, []})
   end
@@ -87,9 +97,9 @@ defmodule FnXML.Parser.Position do
     |> reduce({Position, :format, []})
   end
 
-  def format([{[{context, {line, line_char}}], abs_pos}]), do: [{:loc, {line, line_char, abs_pos}} | context]
+  def format([{[{context, {line, line_char}}], abs_pos}]),
+    do: [{:loc, {line, line_char, abs_pos}} | context]
 end
-
 
 defmodule FnXML.Parser.Attributes do
   @moduledoc """
@@ -111,7 +121,7 @@ defmodule FnXML.Parser.Attributes do
     |> choice([Quoted.string(?"), Quoted.string(?')])
     |> reduce({Attributes, :into_keyword, []})
   end
-  
+
   def attributes() do
     repeat(attribute())
     |> tag(:attributes)
@@ -224,7 +234,9 @@ defmodule FnXML.Parser.Element do
   def next(), do: choice([text(), element()])
 
   def set_true([{:close, _}]), do: {:close, true}
-  
-  def format_content([[{:loc, _}] = loc, {:tag, _} = tag | comment]), do: [tag, {:content, to_string(comment)} | loc]
+
+  def format_content([[{:loc, _}] = loc, {:tag, _} = tag | comment]),
+    do: [tag, {:content, to_string(comment)} | loc]
+
   def format_content([[{:loc, _}] = loc | comment]), do: [{:content, to_string(comment)} | loc]
 end

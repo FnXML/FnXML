@@ -1,5 +1,4 @@
 defmodule FnXML.Stream.Decoder do
-
   @moduledoc """
   A simple XML stream decoder, implemented using behaviours.
   """

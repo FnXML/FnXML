@@ -3,7 +3,6 @@ defmodule FnXML.Stream.Exception do
 end
 
 defmodule FnXML.Stream do
-
   @moduledoc """
   This module provides functions for transforming a stream of XML elements.
   """
@@ -30,6 +29,7 @@ defmodule FnXML.Stream do
   """
   def to_xml(stream, opts \\ [])
   def to_xml(list, opts) when is_list(list), do: Stream.into(list, []) |> to_xml(opts)
+
   def to_xml(stream, opts) do
     pretty = Keyword.get(opts, :pretty, false)
     indent = Keyword.get(opts, :indent, 2)
@@ -38,11 +38,13 @@ defmodule FnXML.Stream do
       element, path, acc ->
         to_xml_fn(element, path, acc, pretty, indent)
     end
+
     transform(stream, fun)
   end
 
   defp to_xml_fn(element, path, acc, pretty, indent) do
     {depth, formatted_element} = format_element(element, path, acc)
+
     if pretty do
       indent = String.duplicate(" ", indent * depth)
       {"#{indent}#{formatted_element}\n", acc}
@@ -53,19 +55,19 @@ defmodule FnXML.Stream do
 
   defp add_leading_space(str = ""), do: str
   defp add_leading_space(str), do: " " <> str
-    
+
   defp format_attributes(attributes) do
     attributes
     |> Enum.map(fn {k, v} -> "#{k}=\"#{v}\"" end)
     |> Enum.join(" ")
     |> add_leading_space()
   end
-  
+
   defp format_element({:prolog, parts}, path, _acc) do
     tag = Element.tag(parts) |> Element.tag_name()
     attrs = format_attributes(Element.attributes(parts))
 
-    { length(path), "<?#{tag}#{attrs}?>" }
+    {length(path), "<?#{tag}#{attrs}?>"}
   end
 
   defp format_element({:open, parts}, path, _acc) do
@@ -73,36 +75,35 @@ defmodule FnXML.Stream do
     close = %{true: "/", false: ""}[Element.close?(parts)]
     attrs = format_attributes(Element.attributes(parts))
 
-    { length(path) - 1, "<#{tag}#{attrs}#{close}>" }
+    {length(path) - 1, "<#{tag}#{attrs}#{close}>"}
   end
 
   defp format_element({:close, parts}, path, _acc) do
     tag = Element.tag(parts) |> Element.tag_name()
 
-    { length(path) - 1, "</#{tag}>" }
+    {length(path) - 1, "</#{tag}>"}
   end
 
   defp format_element({:text, parts}, path, _acc) do
     content = Element.content(parts)
 
     if Regex.match?(~r/[<>&]/, content) do
-      { length(path), "<![CDATA[#{content}]]>" }
+      {length(path), "<![CDATA[#{content}]]>"}
     else
-      { length(path), content }
+      {length(path), content}
     end
   end
 
   defp format_element({:comment, parts}, path, _acc) do
-    { length(path), "<!--#{Element.content(parts)}-->" }
+    {length(path), "<!--#{Element.content(parts)}-->"}
   end
 
   defp format_element({:proc_inst, parts}, path, _acc) do
     tag = Element.tag(parts) |> Element.tag_name()
     content = Element.content(parts)
 
-    { length(path), "<?#{tag} #{content}?>" }
+    {length(path), "<?#{tag} #{content}?>"}
   end
-
 
   @doc """
   Apply a transform function to a stream of XML elements.
@@ -127,7 +128,7 @@ defmodule FnXML.Stream do
   See XMLStreamTools.Inspector for an example of how to use this module.
   """
   @valid_element_id Element.id_list()
-  
+
   def transform(stream, acc \\ [], fun) do
     stream
     |> Stream.chunk_while(initial_acc(acc, fun), &process_item/2, &after_fn/1)
@@ -143,16 +144,24 @@ defmodule FnXML.Stream do
   end
 
   defp process_item({:close, parts} = element, {[], _, _}) do
-    error(element, "unexpected close tag #{Element.tag(parts) |> Element.tag_name()}, missing open tag")
+    error(
+      element,
+      "unexpected close tag #{Element.tag(parts) |> Element.tag_name()}, missing open tag"
+    )
   end
+
   defp process_item({:close, parts} = element, {[head | new_stack] = stack, acc, fun}) do
     tag = Element.tag(parts)
+
     cond do
       tag == head ->
         fun.(element, stack, acc) |> next(new_stack, fun)
 
       tag != head ->
-        error(element, "mis-matched close tag #{inspect(tag)}, expecting: #{Element.tag_name(head)}")
+        error(
+          element,
+          "mis-matched close tag #{inspect(tag)}, expecting: #{Element.tag_name(head)}"
+        )
     end
   end
 
@@ -163,9 +172,11 @@ defmodule FnXML.Stream do
       error(element, "Text element outside of a tag, a root elment is required")
     end
   end
+
   defp process_item({id, _} = element, {stack, acc, fun}) when id in @valid_element_id do
     fun.(element, stack, acc) |> next(stack, fun)
   end
+
   defp process_item({id, _} = element, {_stack, _acc, _fun}) do
     error(element, "unknown element type #{inspect(id)}")
   end
@@ -180,7 +191,6 @@ defmodule FnXML.Stream do
     {line, char} = Element.position(element)
     raise FnXML.Stream.Exception, message: "Error (line: #{line}, char: #{char}) #{msg}"
   end
-
 
   @doc """
   Tap into a stream of XML elements.  The defult function displays each Stream element to
@@ -203,11 +213,18 @@ defmodule FnXML.Stream do
 
   def tap(stream, fun \\ nil, opts) do
     label = Keyword.get(opts, :label, "")
-    inspect_fun = fun || fn {type, meta}, path -> IO.puts("#{label}: #{type}#{inspect(meta)}, path: #{inspect(path)}") end
+
+    inspect_fun =
+      fun ||
+        fn {type, meta}, path ->
+          IO.puts("#{label}: #{type}#{inspect(meta)}, path: #{inspect(path)}")
+        end
+
     inspector = fn element, path, _ ->
       inspect_fun.(element, path)
       {element, []}
     end
+
     transform(stream, inspector)
   end
 
@@ -232,10 +249,12 @@ defmodule FnXML.Stream do
       {:text, [content: "no loc meta"]},
       {:close, [tag: "foo"]}
     ]  
-  
+
   """
   def strip_location_meta(stream) do
-    transform(stream, fn {id, [tag | meta]}, _, _ -> {{id, [tag | Keyword.drop(meta, [:loc])]}, []} end)
+    transform(stream, fn {id, [tag | meta]}, _, _ ->
+      {{id, [tag | Keyword.drop(meta, [:loc])]}, []}
+    end)
   end
 
   @doc """
@@ -268,7 +287,8 @@ defmodule FnXML.Stream do
   """
   def filter(stream, fun, acc \\ []) do
     FnXML.Stream.transform(
-      stream, acc,
+      stream,
+      acc,
       fn
         element, path, acc ->
           case fun.(element, path, acc) do
@@ -294,15 +314,18 @@ defmodule FnXML.Stream do
   """
   def filter_namespaces(stream, ns_list, opts \\ []) when is_list(ns_list) do
     include = Keyword.get(opts, :include, not Keyword.get(opts, :exclude, false))
-    
+
     filter(stream, fn
       {:open, meta}, _, acc ->
         {_tag, ns} = Element.tag(meta)
         result = if ns in ns_list, do: include, else: not include
         {result, [result | acc]}
-      {:close, _}, _, [result | rest] -> {result, rest}
-      {_, _}, _, [result | _] = acc -> {result, acc}
+
+      {:close, _}, _, [result | rest] ->
+        {result, rest}
+
+      {_, _}, _, [result | _] = acc ->
+        {result, acc}
     end)
   end
-
 end

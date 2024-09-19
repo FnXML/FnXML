@@ -1,4 +1,4 @@
- defmodule FnXML.Stream.NativeDataStruct.Encoder.Default do
+defmodule FnXML.Stream.NativeDataStruct.Encoder.Default do
   @moduledoc """
   This Module is used to convert a Native Data Structs (NDS) to a NDS Meta type, which can then be used
   to encode the NDS to an XML stream.
@@ -22,18 +22,18 @@
   # How a tag name is determined:
   - option: :tag_from_parent value (this is automatically set for nested structures
   - name of structure if it is a struct
-  
+
   """
   alias FnXML.Stream.NativeDataStruct, as: NDS
-  
+
   @behaviour NDS.Encoder
 
   @impl NDS.Encoder
   def meta(nds, map) do
     %NDS{nds | private: put_in(nds.private, [:meta], Map.get(map, :_meta, %{}))}
-    |> fn nds -> %NDS{nds | namespace: namespace(nds)} end.()
-    |> fn nds -> %NDS{nds | tag: tag(nds, map)} end.()
-    |> fn nds -> %NDS{nds | attributes: attributes(map)} end.()
+    |> (fn nds -> %NDS{nds | namespace: namespace(nds)} end).()
+    |> (fn nds -> %NDS{nds | tag: tag(nds, map)} end).()
+    |> (fn nds -> %NDS{nds | attributes: attributes(map)} end).()
   end
 
   @impl NDS.Encoder
@@ -41,12 +41,13 @@
     text_keys = text_keys(nds, map)
     attribute_keys = Enum.map(nds.attributes, fn {k, _} -> String.to_atom(k) end)
 
-    %NDS{ nds | content:
+    %NDS{
+      nds
+      | content:
           key_order(nds, map, [:_meta | attribute_keys], text_keys)
           |> encode_item_list(nds)
     }
   end
-
 
   @doc """
   Returns a tuple with the type of the struct and the struct itself.  If `struct`
@@ -83,9 +84,10 @@
     opts = nds.private[:opts] || []
     meta = nds.private[:meta] || %{}
     {type, _map} = struct_type(src)
-    
-    Keyword.get(opts, :tag_from_parent) || type || meta[:tag] || Keyword.get(opts, :tag) || "root"
-    |> to_string()
+
+    Keyword.get(opts, :tag_from_parent) || type || meta[:tag] || Keyword.get(opts, :tag) ||
+      "root"
+      |> to_string()
   end
 
   def namespace(nds) do
@@ -94,7 +96,6 @@
 
     Keyword.get(opts, :namespace) || meta[:namespace] || ""
   end
-
 
   @doc """
   default function to calculate attributes, this can be overriden by specifying a list of options or another
@@ -112,13 +113,12 @@
     |> Enum.map(fn {k, v, _} -> {to_string(k), to_string(v)} end)
     |> Enum.sort(fn {k1, _}, {k2, _} -> k1 < k2 end)
   end
-  
 
   @doc """
   returns sorted list of keys which are first sorted by text keys, then alphabetically
   """
   def key_sort_fn(k1, k2, text_keys) do
-    (k1 in text_keys and k2 not in text_keys) or ((k1 in text_keys == k2 in text_keys) and (k1 < k2))
+    (k1 in text_keys and k2 not in text_keys) or (k1 in text_keys == k2 in text_keys and k1 < k2)
   end
 
   @doc """
@@ -133,26 +133,29 @@
     meta = nds.private[:meta] || %{}
 
     # check opts.order, meta.order, or create a default order
-    ( Keyword.get(opts, :order) ||
-      meta[:order] ||
-      default_key_order(map, attribute_keys, text_keys)
-    )
+    (Keyword.get(opts, :order) ||
+       meta[:order] ||
+       default_key_order(map, attribute_keys, text_keys))
     |> Enum.reduce({[], map}, fn k, {acc, map} ->
       type = %{true => :text, false => :child}[k in text_keys]
-      {val, map} = case Map.has_key?(map, k) do
-        true -> content_value(k, map, type)
-        false -> {[], map}
-      end
+
+      {val, map} =
+        case Map.has_key?(map, k) do
+          true -> content_value(k, map, type)
+          false -> {[], map}
+        end
+
       {[val | acc], map}
     end)
-    |> elem(0)  # get only the acc part, discard the map state
+    # get only the acc part, discard the map state
+    |> elem(0)
     |> Enum.reverse()
     |> List.flatten()
   end
 
   def default_key_order(map, attribute_keys, text_keys) do
     # ensure keys with lists are included list-length times in the order list
-    Enum.reject(Map.keys(map), fn k -> k in attribute_keys end) 
+    Enum.reject(Map.keys(map), fn k -> k in attribute_keys end)
     |> Enum.sort(fn k1, k2 -> key_sort_fn(k1, k2, text_keys) end)
     |> Enum.reduce([], fn k, acc ->
       case map[k] do
@@ -165,13 +168,15 @@
   end
 
   def content_value(_, nil, map, _), do: {[], map}
+
   def content_value(k, map, :text) do
     {val, rest} = Listy.pop(map[k])
     {[{:text, k, val}], %{map | k => rest}}
   end
+
   def content_value(k, map, :child) do
     {val, rest} = Listy.pop(map[k])
-    { (if valid_child?(val), do: {:child, k, val}, else: []), %{map | k => rest} }
+    {if(valid_child?(val), do: {:child, k, val}, else: []), %{map | k => rest}}
   end
 
   @doc """
@@ -188,10 +193,11 @@
     opts = nds.private[:opts] || []
     meta = nds.private[:meta] || %{}
 
-    ( Keyword.get(opts, :text_keys) ||
+    Keyword.get(opts, :text_keys) ||
       meta[:text_keys] ||
-      ["text", "t", "#"] )
-    ( Keyword.get(opts, :text_keys) || meta[:text_keys] || ["text", "t", "#"] )
+      ["text", "t", "#"]
+
+    (Keyword.get(opts, :text_keys) || meta[:text_keys] || ["text", "t", "#"])
     |> Enum.reject(fn k -> not Map.has_key?(map, k) end)
   end
 
@@ -199,7 +205,7 @@
   given a value, return true if it is a valid child value
   """
   def valid_child?(child) when is_map(child), do: true
-  def valid_child?([child|_]), do: valid_child?(child)
+  def valid_child?([child | _]), do: valid_child?(child)
   def valid_child?(child) when is_binary(child), do: true
   def valid_child?(_), do: false
 
@@ -209,19 +215,26 @@
   def encode_item_list(item_list, nds) do
     item_list
     |> Enum.reduce([], fn
-      {:text, _, _} = item, acc -> [item | acc]
-      {:child, key, val}, acc when is_binary(val) -> [ {:child, key,  encode_child(nds, key, val)} | acc]
-      {:child, key, val}, acc -> [ {:child, key, encode_child(nds, key, val)} | acc]
+      {:text, _, _} = item, acc ->
+        [item | acc]
+
+      {:child, key, val}, acc when is_binary(val) ->
+        [{:child, key, encode_child(nds, key, val)} | acc]
+
+      {:child, key, val}, acc ->
+        [{:child, key, encode_child(nds, key, val)} | acc]
     end)
     |> Enum.reverse()
   end
 
   def encode_child(nds, key, child) when is_list(child) do
-    Enum.map(child, fn v -> NDS.Encoder.encode(v, update_opts(nds, key)) end) 
+    Enum.map(child, fn v -> NDS.Encoder.encode(v, update_opts(nds, key)) end)
   end
+
   def encode_child(nds, key, child) when is_map(child) do
     NDS.Encoder.encode(child, update_opts(nds, key))
   end
+
   def encode_child(nds, key, child) when is_binary(child) do
     if Keyword.get(nds.private.opts, :text_only_tags, false) do
       NDS.Encoder.encode(%{key => %{"text" => child}}, update_opts(nds, key))
@@ -230,13 +243,13 @@
     end
   end
 
-  def update_opts(nds, key), do: [{:tag_from_parent, key} | nds.private[:opts] || []] |> propagate_opts()
+  def update_opts(nds, key),
+    do: [{:tag_from_parent, key} | nds.private[:opts] || []] |> propagate_opts()
 
   def propagate_opts(opts) do
     Enum.filter(opts, fn {k, v} -> is_function(v) or k in [:tag_from_parent, :encoder_meta] end)
   end
-        
-  
+
   @doc """
   for lists, returns a list with the key repeated for each element in the list
   for all other values, returns a list with the key
@@ -255,4 +268,3 @@
   def order_item(k, value) when is_list(value), do: List.duplicate(k, length(value))
   def order_item(k, _), do: [k]
 end
-

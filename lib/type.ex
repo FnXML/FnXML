@@ -18,7 +18,7 @@ end
 
 defimpl FnXML.Type, for: Atom do
   def type(value) when is_boolean(value), do: Boolean
-  def type(value) when is_nil(value), do: :nil
+  def type(value) when is_nil(value), do: nil
   def type(_value), do: Atom
 end
 

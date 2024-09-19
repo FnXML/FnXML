@@ -2,7 +2,6 @@ defmodule Format.Map.StructTest do
   defstruct [:a, :b]
 end
 
-
 defmodule FnXML.Stream.NativeDataStruct.Format.MapTest do
   use ExUnit.Case
 
@@ -12,21 +11,26 @@ defmodule FnXML.Stream.NativeDataStruct.Format.MapTest do
 
   test "map test" do
     data = %{"a" => "hi", "b" => %{"info" => "info", a: 1, b: 1}, c: "hi", d: 4}
-    meta = NDS.Encoder.encode(data, [tag_from_parent: "foo"])
+    meta = NDS.Encoder.encode(data, tag_from_parent: "foo")
 
     assert NDS.Format.Map.emit(meta) == %{
-      "foo" => %{
-        "a" => "hi", :c => "hi", :d => "4",
-        "b" => %{
-          "info" => "info", :a => "1", :b => "1",
-          _meta: %{tag: "b", order: ["info"]}
-        },
-        _meta: %{tag: "foo", order: ["a", "b"]}
-      }
-    }
+             "foo" => %{
+               "a" => "hi",
+               :c => "hi",
+               :d => "4",
+               "b" => %{
+                 "info" => "info",
+                 :a => "1",
+                 :b => "1",
+                 _meta: %{tag: "b", order: ["info"]}
+               },
+               _meta: %{tag: "foo", order: ["a", "b"]}
+             }
+           }
   end
 
   def apply_test(xml, data, opts \\ [])
+
   def apply_test(xml, data, opts) do
     parsed_data = FnXML.Map.decode(xml, opts) |> Enum.at(0)
 
@@ -43,34 +47,36 @@ defmodule FnXML.Stream.NativeDataStruct.Format.MapTest do
 
   test "parse simple tag" do
     data = %{"foo" => %{}}
+
     decode =
       FnXML.Parser.parse("<foo></foo>")
       |> NDS.decode(format_meta: &NDS.no_meta/1)
       |> Enum.at(0)
 
     encode =
-      NDS.encode(decode["foo"], [tag_from_parent: "foo"])
+      NDS.encode(decode["foo"], tag_from_parent: "foo")
       |> FnXML.Stream.to_xml([])
       |> Enum.join()
+
     assert decode == data
     assert encode == "<foo/>"
   end
 
   test "parse short tag" do
-     apply_test("<bar/>", %{"bar" => %{}}, format_meta: &NDS.no_meta/1)
-   end
-  
+    apply_test("<bar/>", %{"bar" => %{}}, format_meta: &NDS.no_meta/1)
+  end
+
   test "parse tag with content" do
-     apply_test("<tag>content</tag>", %{"tag" => %{ "text" => "content"}},
-       format_meta: &NDS.no_meta/1,
-       format_finalize: &NDS.format_raw/1
-     )
+    apply_test("<tag>content</tag>", %{"tag" => %{"text" => "content"}},
+      format_meta: &NDS.no_meta/1,
+      format_finalize: &NDS.format_raw/1
+    )
   end
 
   test "parse tag with nested tags" do
     apply_test(
       "<tag><nested>content</nested></tag>",
-      %{"tag" => %{"nested" => %{ "text" => "content"}}},
+      %{"tag" => %{"nested" => %{"text" => "content"}}},
       format_meta: &NDS.no_meta/1,
       format_finalize: fn map -> map end
     )
@@ -81,7 +87,7 @@ defmodule FnXML.Stream.NativeDataStruct.Format.MapTest do
       "<tag><nested>content1</nested><nested>content2</nested></tag>",
       %{
         "tag" => %{
-          "nested" => ["content1", "content2"],
+          "nested" => ["content1", "content2"]
         }
       },
       format_meta: &NDS.no_meta/1
@@ -93,7 +99,8 @@ defmodule FnXML.Stream.NativeDataStruct.Format.MapTest do
       "<tag><nested>content1</nested>sandwich content<nested>content3</nested>other info<nested>last</nested></tag>",
       %{
         "tag" => %{
-          "nested" => ["content1", "content3", "last" ], "text" => ["sandwich content", "other info"],
+          "nested" => ["content1", "content3", "last"],
+          "text" => ["sandwich content", "other info"],
           :_meta => %{tag: "tag", order: ["nested", "text", "nested", "text", "nested"]}
         }
       }
@@ -106,7 +113,7 @@ defmodule FnXML.Stream.NativeDataStruct.Format.MapTest do
       %{
         "root" => %{
           "nested" => %{
-            "info" => %{:_meta => %{namespace: "myapp"}, "text" => "content"},
+            "info" => %{:_meta => %{namespace: "myapp"}, "text" => "content"}
           },
           "ns:myapp": "http://org/app/"
         }
@@ -118,6 +125,7 @@ defmodule FnXML.Stream.NativeDataStruct.Format.MapTest do
 
   test "parse tag with attributes" do
     IO.puts("test start.")
+
     apply_test(
       "<tag attr1=\"value1\" attr2=\"value2\"/>",
       %{"tag" => %{attr1: "value1", attr2: "value2"}},
@@ -147,7 +155,7 @@ defmodule FnXML.Stream.NativeDataStruct.Format.MapTest do
         "<bar><foo>a</foo><foo>b</foo><foo last=\"true\">c</foo></bar>",
         %{
           "bar" => %{
-            "foo" => [ "a", "b", %{ "text" => "c", last: "true"}]
+            "foo" => ["a", "b", %{"text" => "c", last: "true"}]
           }
         },
         format_meta: &NDS.no_meta/1
@@ -155,9 +163,9 @@ defmodule FnXML.Stream.NativeDataStruct.Format.MapTest do
     end
 
     test "finalize with struct" do
-      map = %{ "a" => %Format.Map.StructTest{a: 1, b: 2}, "b" => %{ "text" => "hi" }}
+      map = %{"a" => %Format.Map.StructTest{a: 1, b: 2}, "b" => %{"text" => "hi"}}
       result = NDS.Format.Map.default_finalize(map)
-      assert result == %{ "a" => %Format.Map.StructTest{a: 1, b: 2}, "b" => "hi"}
+      assert result == %{"a" => %Format.Map.StructTest{a: 1, b: 2}, "b" => "hi"}
     end
   end
 end

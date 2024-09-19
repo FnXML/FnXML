@@ -19,10 +19,10 @@ defmodule FnXML.Parser do
   Basic XML Parser, parses to a stream of tags and text.  This makes it possible to process XML as a stream.
   """
 
-  defparsec(:prolog, optional(Element.prolog))
+  defparsec(:prolog, optional(Element.prolog()))
 
   defparsec(:next_element, Element.next())
-    
+
   def parse_prolog(xml) do
     case prolog(xml) do
       {:ok, [prolog], xml, %{}, line, abs_char} -> {[prolog], xml, line, abs_char}
@@ -31,8 +31,11 @@ defmodule FnXML.Parser do
   end
 
   def parse_next({"", line, abs_char}), do: {:halt, {"", line, abs_char}}
+
   def parse_next({xml, line, abs_char}) do
-    {:ok, [{id, meta} | elements ] = items, rest, _, line, abs_char} = next_element__0(xml, [], [], [], line, abs_char)
+    {:ok, [{id, meta} | elements] = items, rest, _, line, abs_char} =
+      next_element__0(xml, [], [], [], line, abs_char)
+
     state = {rest, line, abs_char}
 
     # Note about the following logic:
@@ -43,12 +46,11 @@ defmodule FnXML.Parser do
     if id == :open and Keyword.get(meta, :close, false) do
       tag = Keyword.get(meta, :tag)
       new_meta = Enum.filter(meta, fn {k, _} -> k != :close end)
-      
+
       {[{:open, new_meta}, {:close, [tag: tag]} | elements], state}
     else
       {items, state}
     end
-    
   end
 
   def parse_next({[prolog], xml, line, abs_char}) do

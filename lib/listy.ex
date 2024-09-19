@@ -25,7 +25,7 @@ defmodule Listy do
   def append(list, elem) when is_list(list), do: list ++ [elem]
 
   def push(item, elem), do: insert(item, elem)
-  
+
   def pop(nil), do: {nil, nil}
   def pop(item) when not is_list(item), do: {item, nil}
   def pop([]), do: {nil, nil}

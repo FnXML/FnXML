@@ -9,21 +9,22 @@ defmodule FnXML.Stream.NativeDataStruct.Decoder do
   @behaviour FnXML.Stream.Decoder
 
   def decode(stream, opts \\ []), do: stream |> FnXML.Stream.Decoder.decode(__MODULE__, opts)
-  
+
   @doc """
   update the content list if an nds rec exists
   """
-  def update_content([], _item), do: [] # no NDS struct, so nothing to do this should only happen for the root tag
-  def update_content([h | t], item), do: [%NDS{ h | content: [item | h.content]} | t]
+  # no NDS struct, so nothing to do this should only happen for the root tag
+  def update_content([], _item), do: []
+  def update_content([h | t], item), do: [%NDS{h | content: [item | h.content]} | t]
 
   @doc """
   Reverse generated lists so they are in the correct order
   """
-  def finalize_nds(nds), do: %NDS{ nds | content: Enum.reverse(nds.content) }
+  def finalize_nds(nds), do: %NDS{nds | content: Enum.reverse(nds.content)}
 
   @impl true
   def handle_prolog(_meta, _path, acc, _opts), do: acc
-  
+
   @impl true
   @doc """
   creates an NDS struct copies any matching attributes from meta into the struct
@@ -32,11 +33,12 @@ defmodule FnXML.Stream.NativeDataStruct.Decoder do
   def handle_open(meta, _path, acc, _opts) do
     {tag, ns} = Element.tag(meta)
     loc = Element.position(meta)
+
     meta =
       [{:tag, tag}, {:namespace, ns}, {:source, [loc]} | Keyword.drop(meta, [:tag])]
       |> Enum.into(%{})
-    
-    [ struct(NDS, meta) | acc ]
+
+    [struct(NDS, meta) | acc]
   end
 
   @impl true
@@ -47,7 +49,8 @@ defmodule FnXML.Stream.NativeDataStruct.Decoder do
   # this case happens when we are closing the last tag on the stack.
   def handle_close(_meta, [_path], [nds], _opts), do: {finalize_nds(nds), []}
   # this case happens when we are closing a child tag on the stack
-  def handle_close(_meta, _path, [child | acc], _opts), do: update_content(acc, finalize_nds(child))
+  def handle_close(_meta, _path, [child | acc], _opts),
+    do: update_content(acc, finalize_nds(child))
 
   @impl true
   @doc """

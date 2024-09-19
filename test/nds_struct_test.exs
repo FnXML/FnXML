@@ -16,15 +16,23 @@ defmodule FnXML.Stream.NativeDataStruct.Format.StructTest do
   @tag :skip
   test "struct test" do
     data = %{"a" => "hi", "b" => %{"info" => "info", a: 1, b: 1}, c: "hi", d: 4}
-    meta = NDS.Encoder.encode(data, [tag_from_parent: "foo"])
+    meta = NDS.Encoder.encode(data, tag_from_parent: "foo")
 
     tag_map = %{
       a: "a",
-      b: fn meta -> NDS.Format.Struct.emit(meta.child_list["b"], struct_id: NDS_SubTest, tag_map: %{info: "info"}) end
+      b: fn meta ->
+        NDS.Format.Struct.emit(meta.child_list["b"],
+          struct_id: NDS_SubTest,
+          tag_map: %{info: "info"}
+        )
+      end
     }
+
     assert NDS.Format.Struct.emit(meta, struct_id: NDS_Test, tag_map: tag_map) == %NDS_Test{
-      a: "hi", c: "hi", d: 4,
-      b: %NDS_SubTest{ info: "info", a: 1, b: 1 }
-    }
+             a: "hi",
+             c: "hi",
+             d: 4,
+             b: %NDS_SubTest{info: "info", a: 1, b: 1}
+           }
   end
 end

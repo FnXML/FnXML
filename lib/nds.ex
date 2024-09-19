@@ -1,14 +1,13 @@
 defmodule FnXML.Stream.NativeDataStruct do
-
   alias FnXML.Stream.NativeDataStruct, as: NDS
-  
+
   @moduledoc """
   Converts a native data type (NDS) such as a list or map to an FnXML.Stream representation and vice-versa.
 
   opts:
 
     - :ops_module - the module to use for the operations, this is what defines the structure of the NDS
-  
+
     - :tag_from_parent - the tag to use if it is not specified in the data structure
 
     - :tag_id - the key to use for the tag             
@@ -44,11 +43,12 @@ defmodule FnXML.Stream.NativeDataStruct do
   """
 
   defstruct tag: "undef",
-    namespace: "",
-    attributes: [],
-    content: [],
-    source: [{0, 0}],
-    private: %{}               # private data for the encoder/decoder
+            namespace: "",
+            attributes: [],
+            content: [],
+            source: [{0, 0}],
+            # private data for the encoder/decoder
+            private: %{}
 
   @doc """
   convert native data type to an FnXML.Stream representation
@@ -72,13 +72,18 @@ defmodule FnXML.Stream.NativeDataStruct do
   """
   def encode(map, opts \\ [])
   def encode(nil, opts), do: encode(%{}, opts)
-  def encode(list, opts) when is_list(list), do: Enum.reduce(list, [], fn map, acc -> acc ++ encode(map, opts) end)
+
+  def encode(list, opts) when is_list(list),
+    do: Enum.reduce(list, [], fn map, acc -> acc ++ encode(map, opts) end)
+
   def encode(map, opts) when is_map(map) do
     formatter = Keyword.get(opts, :formatter, NDS.Format.XML)
 
     NDS.Encoder.encode(map, opts) |> formatter.emit()
   end
-  def encode(value, opts), do: encode(%{"text" => to_string(value)}, [{:text, fn map, _ -> map[:value] end} | opts])
+
+  def encode(value, opts),
+    do: encode(%{"text" => to_string(value)}, [{:text, fn map, _ -> map[:value] end} | opts])
 
   @doc """
   convert native data type to a map representation
@@ -90,9 +95,11 @@ defmodule FnXML.Stream.NativeDataStruct do
       [%{"foo" => %{}}]
   """
   def decode(xml_stream, opts \\ [])
+
   def decode(xml_stream, opts) do
     decoder = Keyword.get(opts, :decoder, NDS.Decoder)
     formatter = Keyword.get(opts, :formatter, NDS.Format.Map)
+
     decoder.decode(xml_stream, opts)
     |> Enum.map(fn x -> x end)
     |> formatter.emit(opts)
@@ -100,6 +107,7 @@ defmodule FnXML.Stream.NativeDataStruct do
 
   # various helper functions
   def no_meta(_), do: %{}
+
   def meta_ns_only(%NDS{namespace: ns}) do
     if ns != nil and ns != "", do: %{_meta: %{namespace: ns}}, else: %{}
   end

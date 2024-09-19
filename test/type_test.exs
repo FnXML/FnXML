@@ -13,7 +13,7 @@ defmodule FnXML.TypeTest do
     assert FnXML.Type.type(1.0) == Float
     assert FnXML.Type.type(true) == Boolean
     assert FnXML.Type.type(false) == Boolean
-    assert FnXML.Type.type(nil) == :nil
+    assert FnXML.Type.type(nil) == nil
     assert FnXML.Type.type(:a) == Atom
     assert FnXML.Type.type([1, 2, 4]) == List
     assert FnXML.Type.type(%{a: 1, b: 2}) == Map

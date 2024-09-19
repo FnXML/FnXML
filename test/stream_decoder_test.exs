@@ -5,13 +5,13 @@ defmodule FnXML.Stream.DecoderTest do
 
   doctest Decoder
   doctest Decoder.Default
-  
+
   test "tag" do
-    result = 
-      [ open: [tag: "a"], close: [tag: "a"] ]
+    result =
+      [open: [tag: "a"], close: [tag: "a"]]
       |> FnXML.Stream.Decoder.decode()
       |> Enum.at(0)
-    
+
     assert result == [{:tag, "a"}]
   end
 
@@ -42,12 +42,12 @@ defmodule FnXML.Stream.DecoderTest do
       |> FnXML.Stream.Decoder.decode()
       |> Enum.at(0)
 
-    assert result ==  [
-      tag: "ns:hello",
-      attributes: [{"a", "1"}],
-      text: [content: "hello"],
-      child: [tag: "child", attributes: [{"b", "2"}], text: [content: "child world"]],
-      text: [content: "world"]
-    ]
+    assert result == [
+             tag: "ns:hello",
+             attributes: [{"a", "1"}],
+             text: [content: "hello"],
+             child: [tag: "child", attributes: [{"b", "2"}], text: [content: "child world"]],
+             text: [content: "world"]
+           ]
   end
 end

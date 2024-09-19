@@ -6,7 +6,7 @@ defmodule WITSML_Test do
   use ExUnit.Case
 
   alias FnXML.Stream.NativeDataStruct, as: NDS
-  
+
   @request_1 """
     <?xml version="1.0" encoding="UTF-8"?>
     <soap:Envelope xmlns:soap="http://schemas.xmlsoap.org/soap/envelope/" xmlns:soapenc="http://schemas.xmlsoap.org/soap/encoding/" xmlns:tns="http://www.witsml.org/wsdl/120" xmlns:types="http://www.witsml.org/wsdl/120/encodedTypes" xmlns:xsd="http://www.w3.org/2001/XMLSchema" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance">
@@ -27,12 +27,10 @@ defmodule WITSML_Test do
   """
 
   describe "test WITSML decode" do
-
     # this should eventually be removed.
     @tag :skip
     test "witsml decode" do
-
-      result = 
+      result =
         FnXML.Parser.parse(@request_1)
         |> FnXML.Stream.filter_namespaces(["soap"], exclude: true)
         |> FnXML.Stream.filter_ws()
@@ -42,16 +40,20 @@ defmodule WITSML_Test do
       IO.puts("")
       IO.puts("#{FnXML.Stream.to_xml(result, pretty: true) |> Enum.join()}")
 
-      NDS.decode(result, formatter: NDS.Format.Struct, struct_id: WMLS, tag_map: %{
-            type_in: fn meta -> meta.child_list["WMLtypeIn"].data["text"] end,
-            query_in: fn meta -> meta.child_list["QueryIn"].data["text"] end,
-            options_in: fn meta ->
-              meta.child_list["OptionsIn"].data["text"]
-              |> String.split(",")
-              |> Enum.map(fn x -> String.split(x, "=") |> List.to_tuple() end)
-              |> Enum.into(%{})
-            end
-      })
+      NDS.decode(result,
+        formatter: NDS.Format.Struct,
+        struct_id: WMLS,
+        tag_map: %{
+          type_in: fn meta -> meta.child_list["WMLtypeIn"].data["text"] end,
+          query_in: fn meta -> meta.child_list["QueryIn"].data["text"] end,
+          options_in: fn meta ->
+            meta.child_list["OptionsIn"].data["text"]
+            |> String.split(",")
+            |> Enum.map(fn x -> String.split(x, "=") |> List.to_tuple() end)
+            |> Enum.into(%{})
+          end
+        }
+      )
       |> Enum.map(fn x -> x end)
       |> IO.inspect()
     end
