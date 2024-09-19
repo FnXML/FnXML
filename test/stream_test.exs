@@ -73,4 +73,41 @@ defmodule FnXML.StreamTest do
       assert result == "<a><b/></a>"
     end
   end
+
+  describe "filter" do
+
+    test "whitespace 0" do
+      stream = [
+        open: [tag: "foo"],
+        text: [content: "first element"],
+        text: [content: " \t"],
+        text: [content: "  \n\t"],
+        close: [tag: "foo"]
+      ]
+      assert FnXML.Stream.filter_ws(stream) |> Enum.to_list() == [
+        open: [tag: "foo"],
+        text: [content: "first element"],
+        close: [tag: "foo"]
+      ]
+    end
+
+    test "namespace 0" do
+      stream = [
+        open: [tag: "foo"],
+        open: [tag: "biz:bar"], close: [tag: "biz:bar"],
+        open: [tag: "bar:baz"], close: [tag: "bar:baz"],
+        open: [tag: "bar"], close: [tag: "bar"],
+        open: [tag: "baz:buz"], close: [tag: "baz:buz"],
+        close: [tag: "foo"]
+      ]
+
+      result = FnXML.Stream.filter_namespaces(stream, ["bar", "baz"], exclude: true) |> Enum.to_list()
+      assert result == [
+        open: [tag: "foo"],
+        open: [tag: "biz:bar"], close: [tag: "biz:bar"],
+        open: [tag: "bar"], close: [tag: "bar"],
+        close: [tag: "foo"]
+      ]
+    end
+  end
 end
