@@ -158,7 +158,7 @@ defmodule FnXML.Stream do
 
   defp process_item({:text, _} = element, {[], acc, fun}) do
     if Element.content(element) |> String.match?(~r/^[\s\n]*$/) do
-      {"", acc} |> next([], fun)
+      acc |> next([], fun)
     else
       error(element, "Text element outside of a tag, a root elment is required")
     end
@@ -284,7 +284,7 @@ defmodule FnXML.Stream do
   """
   def filter_ws(stream) do
     filter(stream, fn
-      {:text, [t | _]}, _, acc -> {not String.match?(t, ~r/^\s*$/), acc}
+      {:text, meta}, _, acc -> {not (Element.content(meta) |> String.match?(~r/^\s*$/)), acc}
       _, _, acc -> {true, acc}
     end)
   end
@@ -293,17 +293,15 @@ defmodule FnXML.Stream do
   Filter in/out specific namespaces from the stream
   """
   def filter_namespaces(stream, ns_list, opts \\ []) when is_list(ns_list) do
-    exclude = Keyword.get(opts, :exclude, false)
-    include = Keyword.get(opts, :include, not exclude)
+    include = Keyword.get(opts, :include, not Keyword.get(opts, :exclude, false))
     
     filter(stream, fn
       {:open, meta}, _, acc ->
-        ns = Keyword.get(meta, :namespace)
+        {_tag, ns} = Element.tag(meta)
         result = if ns in ns_list, do: include, else: not include
         {result, [result | acc]}
-      {:text, _}, _, [result | _] = acc -> {result, acc}
       {:close, _}, _, [result | rest] -> {result, rest}
-      _, _, acc -> {not include, acc}
+      {_, _}, _, [result | _] = acc -> {result, acc}
     end)
   end
 
