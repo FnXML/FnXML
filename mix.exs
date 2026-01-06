@@ -14,7 +14,7 @@ defmodule FnXML.MixProject do
   # Run "mix help compile.app" to learn about applications.
   def application do
     [
-      extra_applications: [:logger]
+      extra_applications: [:logger, :xmerl]
     ]
   end
 
@@ -22,7 +22,12 @@ defmodule FnXML.MixProject do
   defp deps do
     [
       {:mix_test_watch, "~> 1.2", only: :dev, runtime: false},
-      {:nimble_parsec, "~> 1.4"}
+      {:nimble_parsec, "~> 1.4"},
+      # Benchmarking
+      {:benchee, "~> 1.3", only: :dev},
+      {:benchee_html, "~> 1.0", only: :dev},
+      {:saxy, "~> 1.5", only: :dev},
+      {:erlsom, "~> 1.5", only: :dev}
     ]
   end
 end
