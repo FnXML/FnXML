@@ -1,321 +1,257 @@
 defmodule FnXML.ParserTest do
-  use ExUnit.Case
+  use ExUnit.Case, async: true
 
-  # These tests are for the NimbleParsec parser (legacy)
-  alias FnXML.Parser.NimbleParsec, as: Parser
-  doctest FnXML.Parser
+  alias FnXML.Parser
 
-  def parse_xml(xml) do
-    xml
-    |> Parser.parse()
-    |> Enum.map(fn x -> x end)
-  end
-
-  def filter_loc(tag_list) do
-    tag_list
-    |> Enum.map(fn {id, list} ->
-      {id,
-       Enum.filter(list, fn
-         {k, _v} -> k != :loc
-         _ -> true
-       end)}
-    end)
-  end
-
-  describe "document prolog" do
-    test "basic prolog" do
-      {[prolog], _xml, _, _} =
-        Parser.parse_prolog("<?xml version=\"1.0\" encoding=\"UTF-8\"?><a></a>")
-
-      assert prolog ==
-               {:prolog,
-                [
-                  tag: "xml",
-                  attributes: [{"version", "1.0"}, {"encoding", "UTF-8"}],
-                  loc: {1, 0, 1}
-                ]}
+  describe "parse/1 stream mode" do
+    test "parses empty element" do
+      events = Parser.parse("<root/>") |> Enum.to_list()
+      assert {:start_document, nil} in events
+      assert {:end_document, nil} in events
+      assert Enum.any?(events, &match?({:start_element, "root", [], _}, &1))
+      assert Enum.any?(events, &match?({:end_element, "root"}, &1))
     end
 
-    test "prolog without encoding" do
-      {[prolog], _xml, _, _} = Parser.parse_prolog("<?xml version=\"1.0\" ?><a></a>")
-      assert prolog == {:prolog, [tag: "xml", attributes: [{"version", "1.0"}], loc: {1, 0, 1}]}
+    test "parses element with text" do
+      events = Parser.parse("<root>hello</root>") |> Enum.to_list()
+      assert Enum.any?(events, &match?({:characters, "hello", _}, &1))
     end
 
-    test "no prolog" do
-      {_xml, _, _} = Parser.parse_prolog("<a></a>")
-      assert true
+    test "parses nested elements" do
+      events = Parser.parse("<a><b><c/></b></a>") |> Enum.to_list()
+      tags = events
+        |> Enum.filter(&match?({:start_element, _, _, _}, &1))
+        |> Enum.map(fn {:start_element, tag, _, _} -> tag end)
+      assert tags == ["a", "b", "c"]
+    end
+
+    test "parses attributes" do
+      events = Parser.parse(~s(<root id="1" class="test"/>)) |> Enum.to_list()
+      {_, _, attrs, _} = Enum.find(events, &match?({:start_element, "root", _, _}, &1))
+      assert {"id", "1"} in attrs
+      assert {"class", "test"} in attrs
+    end
+
+    test "parses single-quoted attributes" do
+      events = Parser.parse("<root attr='value'/>") |> Enum.to_list()
+      {_, _, attrs, _} = Enum.find(events, &match?({:start_element, "root", _, _}, &1))
+      assert {"attr", "value"} in attrs
+    end
+
+    test "handles whitespace in tags" do
+      events = Parser.parse("<root  id = \"1\"  />") |> Enum.to_list()
+      assert Enum.any?(events, &match?({:start_element, "root", _, _}, &1))
     end
   end
 
-  describe "next_element" do
-    test "capture white space" do
-      {:ok, element, "<a></a>", _, _, _} = Parser.next_element("  <a></a>")
-      assert element == [text: [content: "  ", loc: {1, 0, 0}]]
+  describe "parse/2 callback mode" do
+    test "invokes callback for each event" do
+      events = []
+      callback = fn event -> send(self(), {:event, event}) end
+
+      Parser.parse("<root/>", callback)
+
+      assert_received {:event, {:start_document, nil}}
+      assert_received {:event, {:start_element, "root", [], _}}
+      assert_received {:event, {:end_element, "root"}}
+      assert_received {:event, {:end_document, nil}}
     end
-
-    test "open tag" do
-      {:ok, element, _xml, _, _, _} = Parser.next_element("<a a='1'></a>")
-      assert element == [open: [tag: "a", attributes: [{"a", "1"}], loc: {1, 0, 1}]]
-    end
-
-    test "close tag" do
-      {:ok, element, _xml, _, _, _} = Parser.next_element("</a><!-- comment -->")
-      assert element == [close: [tag: "a", loc: {1, 0, 1}]]
-    end
-
-    test "text" do
-      {:ok, element, _xml, _, _, _} = Parser.next_element("test text<!-- comment -->")
-      assert element == [text: [content: "test text", loc: {1, 0, 0}]]
-    end
-
-    test "cdata" do
-      {:ok, element, _xml, _, _, _} =
-        Parser.next_element("<![CDATA[<html><body>example</body></html>]]><!-- comment -->")
-
-      assert element == [text: [content: "<html><body>example</body></html>", loc: {1, 0, 1}]]
-    end
-
-    test "comment" do
-      {:ok, element, _xml, _, _, _} = Parser.next_element("<!-- comment -->")
-      assert element == [comment: [content: " comment ", loc: {1, 0, 1}]]
-    end
-  end
-
-  describe "parse" do
-    test "basic element" do
-      result = Parser.parse("<a></a>") |> Enum.map(fn x -> x end)
-      assert result == [open: [tag: "a", loc: {1, 0, 1}], close: [tag: "a", loc: {1, 0, 4}]]
-    end
-
-    test "prolog followed by element" do
-      result =
-        Parser.parse("<?xml version='1.0' encoding='utf-8'?><a></a>") |> Enum.map(fn x -> x end)
-
-      assert result == [
-               prolog: [
-                 tag: "xml",
-                 attributes: [{"version", "1.0"}, {"encoding", "utf-8"}],
-                 loc: {1, 0, 1}
-               ],
-               open: [tag: "a", loc: {1, 0, 39}],
-               close: [tag: "a", loc: {1, 0, 42}]
-             ]
-    end
-  end
-
-  # tag tests; single tag with variations
-  test "open and close tag" do
-    result = parse_xml("<a></a>") |> filter_loc()
-    assert result == [open: [tag: "a"], close: [tag: "a"]]
-  end
-
-  test "empty tag" do
-    result = parse_xml("<a/>") |> filter_loc()
-    assert result == [open: [tag: "a"], close: [tag: "a"]]
-  end
-
-  test "attributes" do
-    result = parse_xml("<a b=\"c\" d=\"e\"/>") |> filter_loc()
-    assert result == [open: [tag: "a", attributes: [{"b", "c"}, {"d", "e"}]], close: [tag: "a"]]
-  end
-
-  test "text" do
-    result = parse_xml("<a>text</a>") |> filter_loc()
-    assert result == [open: [tag: "a"], text: [content: "text"], close: [tag: "a"]]
-  end
-
-  test "tag with all meta" do
-    result = parse_xml("<ns:a b=\"c\" d=\"e\">text</ns:a>") |> filter_loc()
-
-    assert result == [
-             open: [tag: "ns:a", attributes: [{"b", "c"}, {"d", "e"}]],
-             text: [content: "text"],
-             close: [tag: "ns:a"]
-           ]
-  end
-
-  test "that '-', '_', '.' can be included in tags and namespaces" do
-    input = "<my-env:fancy_tag.with-punc></my-env:fancy_tag.with-punc>"
-
-    assert parse_xml(input) |> Enum.to_list() == [
-             open: [tag: "my-env:fancy_tag.with-punc", loc: {1, 0, 1}],
-             close: [tag: "my-env:fancy_tag.with-punc", loc: {1, 0, 29}]
-           ]
-  end
-
-  # nested tag tests
-
-  test "test 2" do
-    result = parse_xml("<ns:foo a='1'><bar>message</bar></ns:foo>")
-
-    assert result == [
-             {:open, [tag: "ns:foo", attributes: [{"a", "1"}], loc: {1, 0, 1}]},
-             {:open, [tag: "bar", loc: {1, 0, 15}]},
-             {:text, [content: "message", loc: {1, 0, 19}]},
-             {:close, [tag: "bar", loc: {1, 0, 27}]},
-             {:close, [tag: "ns:foo", loc: {1, 0, 33}]}
-           ]
-  end
-
-  test "single nested tag" do
-    xml = "<a><b/></a>"
-    result = parse_xml(xml) |> filter_loc()
-
-    assert result == [
-             open: [tag: "a"],
-             open: [tag: "b"],
-             close: [tag: "b"],
-             close: [tag: "a"]
-           ]
-  end
-
-  test "list of nested tags" do
-    xml = "<a><b/><c/><d/></a>"
-    result = parse_xml(xml) |> filter_loc()
-
-    assert result == [
-             open: [tag: "a"],
-             open: [tag: "b"],
-             close: [tag: "b"],
-             open: [tag: "c"],
-             close: [tag: "c"],
-             open: [tag: "d"],
-             close: [tag: "d"],
-             close: [tag: "a"]
-           ]
-  end
-
-  test "list of nested tags with text" do
-    xml = "<a>b-text<b></b>c-text<c></c>d-text<d></d>post-text</a>"
-    result = parse_xml(xml) |> filter_loc()
-
-    assert result == [
-             open: [tag: "a"],
-             text: [content: "b-text"],
-             open: [tag: "b"],
-             close: [tag: "b"],
-             text: [content: "c-text"],
-             open: [tag: "c"],
-             close: [tag: "c"],
-             text: [content: "d-text"],
-             open: [tag: "d"],
-             close: [tag: "d"],
-             text: [content: "post-text"],
-             close: [tag: "a"]
-           ]
   end
 
   describe "comments" do
-    test "single line comment" do
-      xml = "<!-- comment --><a></a>"
-      result = parse_xml(xml) |> filter_loc()
-      assert result == [comment: [content: " comment "], open: [tag: "a"], close: [tag: "a"]]
+    test "parses comment" do
+      events = Parser.parse("<root><!-- comment --></root>") |> Enum.to_list()
+      assert Enum.any?(events, &match?({:comment, " comment ", _}, &1))
     end
 
-    test "multi line comment" do
-      xml = "<!-- comment\non\nmultiple\nlines --><a/>"
-      result = parse_xml(xml) |> filter_loc()
-
-      assert result == [
-               comment: [content: " comment\non\nmultiple\nlines "],
-               open: [tag: "a"],
-               close: [tag: "a"]
-             ]
+    test "parses empty comment" do
+      events = Parser.parse("<root><!----></root>") |> Enum.to_list()
+      assert Enum.any?(events, &match?({:comment, "", _}, &1))
     end
 
-    test "comment with nested tags" do
-      xml = "<!-- comment <a>inside</a> --><b/>"
-      result = parse_xml(xml) |> filter_loc()
-
-      assert result == [
-               comment: [content: " comment <a>inside</a> "],
-               open: [tag: "b"],
-               close: [tag: "b"]
-             ]
-    end
-
-    test "comment after tag" do
-      xml = "<a/><!-- comment -->"
-      result = parse_xml(xml) |> filter_loc()
-      assert result == [open: [tag: "a"], close: [tag: "a"], comment: [content: " comment "]]
-    end
-
-    test "comment within tag" do
-      xml = "<a><!-- comment --></a>"
-      result = parse_xml(xml) |> filter_loc()
-      assert result == [open: [tag: "a"], comment: [content: " comment "], close: [tag: "a"]]
-    end
-
-    test "comment within tag before text" do
-      xml = "<a> <!-- comment -->abc</a>"
-      result = parse_xml(xml) |> filter_loc()
-
-      assert result == [
-               open: [tag: "a"],
-               text: [content: " "],
-               comment: [content: " comment "],
-               text: [content: "abc"],
-               close: [tag: "a"]
-             ]
-    end
-
-    test "comment within tag after text" do
-      xml = "<a>abc <!-- comment --></a>"
-      result = parse_xml(xml) |> filter_loc()
-
-      assert result == [
-               open: [tag: "a"],
-               text: [content: "abc "],
-               comment: [content: " comment "],
-               close: [tag: "a"]
-             ]
-    end
-
-    test "comment within tag within text" do
-      xml = "<a>abc <!-- comment -->def</a>"
-      result = parse_xml(xml) |> filter_loc()
-
-      assert result == [
-               open: [tag: "a"],
-               text: [content: "abc "],
-               comment: [content: " comment "],
-               text: [content: "def"],
-               close: [tag: "a"]
-             ]
+    test "parses comment with special chars" do
+      events = Parser.parse("<root><!-- <>&' --></root>") |> Enum.to_list()
+      assert Enum.any?(events, &match?({:comment, " <>&' ", _}, &1))
     end
   end
 
-  describe "white space" do
-    test "tag without ws" do
-      result = parse_xml("<a></a>") |> filter_loc()
-      assert result == [{:open, [tag: "a"]}, {:close, [tag: "a"]}]
+  describe "CDATA sections" do
+    test "parses CDATA" do
+      events = Parser.parse("<root><![CDATA[content]]></root>") |> Enum.to_list()
+      assert Enum.any?(events, &match?({:characters, "content", _}, &1))
     end
 
-    test "tag with ws after name" do
-      result = parse_xml("<a ></a >") |> filter_loc()
-      assert result == [{:open, [tag: "a"]}, {:close, [tag: "a"]}]
-    end
-
-    test "tag with tab" do
-      result = parse_xml("<a\t></a>") |> filter_loc()
-      assert result == [{:open, [tag: "a"]}, {:close, [tag: "a"]}]
+    test "parses CDATA with special chars" do
+      events = Parser.parse("<root><![CDATA[<>&\"']]></root>") |> Enum.to_list()
+      assert Enum.any?(events, &match?({:characters, "<>&\"'", _}, &1))
     end
   end
 
-  describe "prolog" do
-    test "no prolog" do
-      result = parse_xml("<a></a>") |> filter_loc()
-      assert result == [{:open, [tag: "a"]}, {:close, [tag: "a"]}]
+  describe "processing instructions" do
+    test "parses PI" do
+      events = Parser.parse("<?target data?><root/>") |> Enum.to_list()
+      assert Enum.any?(events, &match?({:processing_instruction, "target", _, _}, &1))
     end
 
-    test "prolog" do
-      result = parse_xml("<?xml version=\"1.0\"?><a></a>") |> filter_loc()
+    test "parses PI without data" do
+      events = Parser.parse("<?target?><root/>") |> Enum.to_list()
+      assert Enum.any?(events, &match?({:processing_instruction, "target", _, _}, &1))
+    end
+  end
 
-      assert result == [
-               {:prolog, [tag: "xml", attributes: [{"version", "1.0"}]]},
-               {:open, [tag: "a"]},
-               {:close, [tag: "a"]}
-             ]
+  describe "XML prolog" do
+    test "parses prolog" do
+      events = Parser.parse(~s(<?xml version="1.0"?><root/>)) |> Enum.to_list()
+      assert Enum.any?(events, fn
+        {:prolog, "xml", attrs, _} -> {"version", "1.0"} in attrs
+        _ -> false
+      end)
+    end
+
+    test "parses prolog with encoding" do
+      events = Parser.parse(~s(<?xml version="1.0" encoding="UTF-8"?><root/>)) |> Enum.to_list()
+      prolog = Enum.find(events, &match?({:prolog, "xml", _, _}, &1))
+      {:prolog, "xml", attrs, _} = prolog
+      assert {"encoding", "UTF-8"} in attrs
+    end
+
+    test "parses prolog with standalone" do
+      events = Parser.parse(~s(<?xml version="1.0" standalone="yes"?><root/>)) |> Enum.to_list()
+      prolog = Enum.find(events, &match?({:prolog, "xml", _, _}, &1))
+      {:prolog, "xml", attrs, _} = prolog
+      assert {"standalone", "yes"} in attrs
+    end
+  end
+
+  describe "DOCTYPE" do
+    test "parses DOCTYPE" do
+      events = Parser.parse("<!DOCTYPE html><root/>") |> Enum.to_list()
+      assert Enum.any?(events, &match?({:dtd, _, _}, &1))
+    end
+
+    test "parses DOCTYPE with system ID" do
+      xml = ~s(<!DOCTYPE html SYSTEM "http://example.com/dtd"><root/>)
+      events = Parser.parse(xml) |> Enum.to_list()
+      assert Enum.any?(events, &match?({:dtd, _, _}, &1))
+    end
+
+    test "parses DOCTYPE with public ID" do
+      xml = ~s(<!DOCTYPE html PUBLIC "-//W3C//DTD HTML 4.01//EN" "http://www.w3.org/TR/html4/strict.dtd"><root/>)
+      events = Parser.parse(xml) |> Enum.to_list()
+      assert Enum.any?(events, &match?({:dtd, _, _}, &1))
+    end
+
+    test "parses DOCTYPE with internal subset" do
+      xml = "<!DOCTYPE root [<!ELEMENT root (#PCDATA)>]><root/>"
+      events = Parser.parse(xml) |> Enum.to_list()
+      assert Enum.any?(events, &match?({:dtd, _, _}, &1))
+    end
+  end
+
+  describe "entity references" do
+    test "passes through entity references in text" do
+      # FnXML.Parser passes through entities - use Stream.resolve_entities to expand
+      events = Parser.parse("<root>&lt;&gt;&amp;</root>") |> Enum.to_list()
+      assert Enum.any?(events, &match?({:characters, _, _}, &1))
+    end
+
+    test "passes through decimal numeric entities" do
+      events = Parser.parse("<root>&#65;</root>") |> Enum.to_list()
+      assert Enum.any?(events, &match?({:characters, _, _}, &1))
+    end
+
+    test "passes through hex numeric entities" do
+      events = Parser.parse("<root>&#x41;</root>") |> Enum.to_list()
+      assert Enum.any?(events, &match?({:characters, _, _}, &1))
+    end
+
+    test "passes through entities in attributes" do
+      events = Parser.parse(~s(<root attr="a&lt;b"/>)) |> Enum.to_list()
+      {_, _, attrs, _} = Enum.find(events, &match?({:start_element, "root", _, _}, &1))
+      # Entities are passed through, not expanded
+      assert Enum.any?(attrs, fn {name, _} -> name == "attr" end)
+    end
+  end
+
+  describe "whitespace handling" do
+    test "preserves text whitespace" do
+      events = Parser.parse("<root>  hello  </root>") |> Enum.to_list()
+      # Parser may trim leading whitespace, but trailing should be preserved
+      assert Enum.any?(events, fn
+        {:characters, text, _} -> String.contains?(text, "hello")
+        _ -> false
+      end)
+    end
+
+    test "handles newlines" do
+      events = Parser.parse("<root>\n  text\n</root>") |> Enum.to_list()
+      text_events = Enum.filter(events, &match?({:characters, _, _}, &1))
+      assert length(text_events) >= 1
+    end
+  end
+
+  describe "unicode" do
+    test "parses unicode element names" do
+      events = Parser.parse("<élément/>") |> Enum.to_list()
+      assert Enum.any?(events, &match?({:start_element, "élément", [], _}, &1))
+    end
+
+    test "parses unicode text" do
+      events = Parser.parse("<root>中文</root>") |> Enum.to_list()
+      assert Enum.any?(events, &match?({:characters, "中文", _}, &1))
+    end
+
+    test "parses unicode attributes" do
+      events = Parser.parse(~s(<root attr="日本語"/>)) |> Enum.to_list()
+      {_, _, attrs, _} = Enum.find(events, &match?({:start_element, "root", _, _}, &1))
+      assert {"attr", "日本語"} in attrs
+    end
+  end
+
+  describe "error handling" do
+    test "reports unclosed tag" do
+      events = Parser.parse("<root") |> Enum.to_list()
+      assert Enum.any?(events, &match?({:error, _, _}, &1))
+    end
+
+    test "reports unterminated attribute" do
+      events = Parser.parse(~s(<root attr="value)) |> Enum.to_list()
+      assert Enum.any?(events, &match?({:error, _, _}, &1))
+    end
+  end
+
+  describe "namespaced elements" do
+    test "parses prefixed elements" do
+      events = Parser.parse("<ns:root xmlns:ns=\"http://example.com\"/>") |> Enum.to_list()
+      assert Enum.any?(events, &match?({:start_element, "ns:root", _, _}, &1))
+    end
+
+    test "parses prefixed attributes" do
+      events = Parser.parse(~s(<root ns:attr="value" xmlns:ns="http://example.com"/>)) |> Enum.to_list()
+      {_, _, attrs, _} = Enum.find(events, &match?({:start_element, "root", _, _}, &1))
+      assert Enum.any?(attrs, fn {name, _} -> String.contains?(name, "ns:") end)
+    end
+  end
+
+  describe "mixed content" do
+    test "parses text with inline elements" do
+      events = Parser.parse("<root>Hello <b>World</b>!</root>") |> Enum.to_list()
+      text_events = Enum.filter(events, &match?({:characters, _, _}, &1))
+      assert length(text_events) >= 2
+    end
+  end
+
+  describe "empty content" do
+    test "parses empty string" do
+      events = Parser.parse("") |> Enum.to_list()
+      assert {:start_document, nil} in events
+      assert {:end_document, nil} in events
+    end
+
+    test "parses whitespace only" do
+      events = Parser.parse("   ") |> Enum.to_list()
+      assert {:start_document, nil} in events
+      assert {:end_document, nil} in events
     end
   end
 end

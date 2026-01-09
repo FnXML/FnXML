@@ -1,27 +1,27 @@
-defmodule FnXML.Stream.EntitiesTest do
+defmodule FnXML.EntitiesTest do
   use ExUnit.Case, async: true
 
-  alias FnXML.Stream.Entities
+  alias FnXML.Entities
   alias FnXML.Error
 
   # Helper to extract text content from parsed XML
-  # New token format: {:text, content, loc}
+  # New token format: {:characters, content, loc}
   defp extract_text(stream) do
     stream
     |> Enum.to_list()
     |> Enum.find_value(fn
-      {:text, content, _loc} -> content
+      {:characters, content, _loc} -> content
       _ -> nil
     end)
   end
 
   # Helper to extract first attribute value
-  # New token format: {:open, tag, attrs, loc}
+  # New token format: {:start_element, tag, attrs, loc}
   defp extract_attr(stream, attr_name) do
     stream
     |> Enum.to_list()
     |> Enum.find_value(fn
-      {:open, _tag, attrs, _loc} ->
+      {:start_element, _tag, attrs, _loc} ->
         Enum.find_value(attrs, fn {name, val} -> if name == attr_name, do: val end)
 
       _ ->
@@ -211,8 +211,8 @@ defmodule FnXML.Stream.EntitiesTest do
         |> Entities.resolve()
         |> Enum.to_list()
 
-      open = Enum.find(tokens, &match?({:open, _, _, _}, &1))
-      {:open, _tag, attrs, _loc} = open
+      open = Enum.find(tokens, &match?({:start_element, _, _, _}, &1))
+      {:start_element, _tag, attrs, _loc} = open
 
       assert Enum.find_value(attrs, fn {n, v} -> if n == "x", do: v end) == "a&b"
       assert Enum.find_value(attrs, fn {n, v} -> if n == "y", do: v end) == "c<d"
@@ -264,9 +264,9 @@ defmodule FnXML.Stream.EntitiesTest do
         |> Enum.to_list()
 
       assert Enum.any?(tokens, fn
-        {:error, %Error{type: :unknown_entity}} -> true
-        _ -> false
-      end)
+               {:error, %Error{type: :unknown_entity}} -> true
+               _ -> false
+             end)
     end
 
     test "on_unknown: :keep preserves entity reference" do
@@ -321,14 +321,14 @@ defmodule FnXML.Stream.EntitiesTest do
         |> Entities.resolve()
         |> Enum.to_list()
 
-      # New format: {:open, tag, attrs, loc}
-      assert Enum.count(tokens, &match?({:open, _, _, _}, &1)) == 2
-      # Close tags can be {:close, tag} or {:close, tag, loc}
+      # New format: {:start_element, tag, attrs, loc}
+      assert Enum.count(tokens, &match?({:start_element, _, _, _}, &1)) == 2
+      # Close tags can be {:end_element, tag} or {:end_element, tag, loc}
       assert Enum.count(tokens, fn
-        {:close, _} -> true
-        {:close, _, _} -> true
-        _ -> false
-      end) == 2
+               {:end_element, _} -> true
+               {:end_element, _, _} -> true
+               _ -> false
+             end) == 2
     end
 
     test "comments pass through unchanged" do

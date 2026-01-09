@@ -4,7 +4,7 @@
 # Tests attribute uniqueness within elements
 
 alias FnXML.Parser
-alias FnXML.Stream.Validate
+alias FnXML.Validate
 alias FnXML.Error
 
 defmodule AttributesDemo do

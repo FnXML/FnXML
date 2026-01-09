@@ -4,7 +4,7 @@
 # Tests tag structure: matching open/close tags, proper nesting
 
 alias FnXML.Parser
-alias FnXML.Stream.Validate
+alias FnXML.Validate
 alias FnXML.Error
 
 defmodule WellFormedDemo do

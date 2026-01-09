@@ -1,0 +1,22 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<catalog xmlns:test="http://example.com/test">
+  <book id="1" category="fiction">
+    <title>The Great Gatsby</title>
+    <author>F. Scott Fitzgerald</author>
+    <year>1925</year>
+    <price currency="USD">10.99</price>
+    <description>A story of decadence &amp; excess.</description>
+  </book>
+  <book id="2" category="non-fiction">
+    <title>A Brief History of Time</title>
+    <author>Stephen Hawking</author>
+    <year>1988</year>
+    <price currency="GBP">12.50</price>
+    <description>Exploring the universe &amp; beyond.</description>
+  </book>
+  <!-- More books could be added here -->
+  <metadata>
+    <generated>2026-01-06T07:03:31.151581Z</generated>
+    <version>1.0</version>
+  </metadata>
+</catalog>

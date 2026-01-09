@@ -7,12 +7,12 @@ defmodule FnXML.ElementsTest do
 
   describe "tag" do
     test "tag without namespace" do
-      # New format: {:open, tag, attrs, loc}
-      assert Element.tag({:open, "foo", [], {1, 0, 1}}) == {"foo", ""}
+      # New format: {:start_element, tag, attrs, loc}
+      assert Element.tag({:start_element, "foo", [], {1, 0, 1}}) == {"foo", ""}
     end
 
     test "tag with namespace" do
-      assert Element.tag({:open, "bar:foo", [], {1, 0, 1}}) == {"foo", "bar"}
+      assert Element.tag({:start_element, "bar:foo", [], {1, 0, 1}}) == {"foo", "bar"}
     end
 
     test "tag from string" do
@@ -34,31 +34,31 @@ defmodule FnXML.ElementsTest do
 
   describe "attributes" do
     test "element without attributes" do
-      assert Element.attributes({:open, "foo", [], {1, 0, 1}}) == []
+      assert Element.attributes({:start_element, "foo", [], {1, 0, 1}}) == []
     end
 
     test "element with attributes" do
-      assert Element.attributes({:open, "foo", [{"bar", "baz"}, {"a", "1"}], {1, 0, 1}}) ==
+      assert Element.attributes({:start_element, "foo", [{"bar", "baz"}, {"a", "1"}], {1, 0, 1}}) ==
                [{"bar", "baz"}, {"a", "1"}]
     end
   end
 
   describe "attributes_map" do
     test "element without attributes" do
-      assert Element.attribute_map({:open, "foo", [], {1, 0, 1}}) == %{}
+      assert Element.attribute_map({:start_element, "foo", [], {1, 0, 1}}) == %{}
     end
 
     test "element with attributes" do
       assert Element.attribute_map(
-               {:open, "foo", [{"bar", "baz"}, {"a", "1"}], {1, 0, 1}}
+               {:start_element, "foo", [{"bar", "baz"}, {"a", "1"}], {1, 0, 1}}
              ) == %{"bar" => "baz", "a" => "1"}
     end
   end
 
   describe "content" do
     test "text element content" do
-      # Content is extracted from text elements: {:text, content, loc}
-      assert Element.content({:text, "hello world", {1, 0, 5}}) == "hello world"
+      # Content is extracted from text elements: {:characters, content, loc}
+      assert Element.content({:characters, "hello world", {1, 0, 5}}) == "hello world"
     end
 
     test "comment element content" do
@@ -70,41 +70,129 @@ defmodule FnXML.ElementsTest do
     test "element position" do
       # Position is calculated from loc: {line, line_start, abs_pos}
       # Result is {line, abs_pos - line_start}
-      assert Element.position({:open, "foo", [], {2, 15, 19}}) == {2, 4}
+      assert Element.position({:start_element, "foo", [], {2, 15, 19}}) == {2, 4}
     end
 
     test "text element position" do
-      assert Element.position({:text, "hello", {1, 0, 5}}) == {1, 5}
+      assert Element.position({:characters, "hello", {1, 0, 5}}) == {1, 5}
     end
 
     test "close tag without loc" do
-      assert Element.position({:close, "foo"}) == {0, 0}
+      assert Element.position({:end_element, "foo"}) == {0, 0}
     end
   end
 
   describe "loc" do
     test "open element loc" do
-      assert Element.loc({:open, "foo", [], {2, 15, 19}}) == {2, 15, 19}
+      assert Element.loc({:start_element, "foo", [], {2, 15, 19}}) == {2, 15, 19}
     end
 
     test "close element without loc" do
-      assert Element.loc({:close, "foo"}) == nil
+      assert Element.loc({:end_element, "foo"}) == nil
     end
 
     test "close element with loc" do
-      assert Element.loc({:close, "foo", {1, 0, 10}}) == {1, 0, 10}
+      assert Element.loc({:end_element, "foo", {1, 0, 10}}) == {1, 0, 10}
     end
   end
 
   describe "tag_string" do
     test "open element tag string" do
-      assert Element.tag_string({:open, "foo", [], {1, 0, 1}}) == "foo"
-      assert Element.tag_string({:open, "ns:bar", [], {1, 0, 1}}) == "ns:bar"
+      assert Element.tag_string({:start_element, "foo", [], {1, 0, 1}}) == "foo"
+      assert Element.tag_string({:start_element, "ns:bar", [], {1, 0, 1}}) == "ns:bar"
     end
 
     test "close element tag string" do
-      assert Element.tag_string({:close, "foo"}) == "foo"
-      assert Element.tag_string({:close, "ns:bar", {1, 0, 5}}) == "ns:bar"
+      assert Element.tag_string({:end_element, "foo"}) == "foo"
+      assert Element.tag_string({:end_element, "ns:bar", {1, 0, 5}}) == "ns:bar"
+    end
+  end
+
+  describe "id_list" do
+    test "returns all event type atoms" do
+      ids = Element.id_list()
+      assert :start_document in ids
+      assert :end_document in ids
+      assert :prolog in ids
+      assert :start_element in ids
+      assert :end_element in ids
+      assert :characters in ids
+      assert :comment in ids
+      assert :processing_instruction in ids
+      assert :error in ids
+    end
+  end
+
+  describe "attributes from prolog" do
+    test "returns attributes from prolog element" do
+      attrs = [{"version", "1.0"}, {"encoding", "UTF-8"}]
+      assert Element.attributes({:prolog, "xml", attrs, {1, 0, 1}}) == attrs
+    end
+  end
+
+  describe "content from processing instruction" do
+    test "returns content from PI" do
+      assert Element.content({:processing_instruction, "php", "echo 'hi'", {1, 0, 1}}) == "echo 'hi'"
+    end
+  end
+
+  describe "position for all event types" do
+    test "start_document position" do
+      assert Element.position({:start_document, nil}) == {0, 0}
+    end
+
+    test "end_document position" do
+      assert Element.position({:end_document, nil}) == {0, 0}
+    end
+
+    test "comment position" do
+      assert Element.position({:comment, "text", {1, 5, 10}}) == {1, 5}
+    end
+
+    test "prolog position" do
+      assert Element.position({:prolog, "xml", [], {1, 0, 2}}) == {1, 2}
+    end
+
+    test "processing_instruction position" do
+      assert Element.position({:processing_instruction, "php", "", {2, 10, 15}}) == {2, 5}
+    end
+
+    test "error position" do
+      assert Element.position({:error, "msg", {3, 20, 25}}) == {3, 5}
+    end
+
+    test "end_element with loc position" do
+      assert Element.position({:end_element, "foo", {2, 10, 18}}) == {2, 8}
+    end
+  end
+
+  describe "loc for all event types" do
+    test "start_document loc" do
+      assert Element.loc({:start_document, nil}) == nil
+    end
+
+    test "end_document loc" do
+      assert Element.loc({:end_document, nil}) == nil
+    end
+
+    test "characters loc" do
+      assert Element.loc({:characters, "text", {1, 0, 5}}) == {1, 0, 5}
+    end
+
+    test "comment loc" do
+      assert Element.loc({:comment, "text", {1, 5, 10}}) == {1, 5, 10}
+    end
+
+    test "prolog loc" do
+      assert Element.loc({:prolog, "xml", [], {1, 0, 2}}) == {1, 0, 2}
+    end
+
+    test "processing_instruction loc" do
+      assert Element.loc({:processing_instruction, "php", "", {2, 10, 15}}) == {2, 10, 15}
+    end
+
+    test "error loc" do
+      assert Element.loc({:error, "msg", {3, 20, 25}}) == {3, 20, 25}
     end
   end
 end

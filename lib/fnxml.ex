@@ -1,0 +1,406 @@
+defmodule FnXML do
+  @moduledoc """
+  Unified XML parsing interface for FnXML.
+
+  Provides convenient functions for parsing XML documents into event streams.
+  This module offers a high-level API for common XML processing tasks, built on
+  top of the streaming `FnXML.Parser`.
+
+  ## Specifications
+
+  - W3C XML 1.0 (Fifth Edition): https://www.w3.org/TR/xml/
+  - W3C Namespaces in XML 1.0: https://www.w3.org/TR/xml-names/
+
+  ## API Overview
+
+  | Function | Description |
+  |----------|-------------|
+  | `parse/1` | Parse XML string to list of events (eager) |
+  | `parse_stream/1` | Parse XML string to lazy stream (memory efficient) |
+  | `halt_on_error/1` | Stop stream on first parse error |
+  | `log_on_error/2` | Log errors while passing through |
+  | `filter_whitespace/1` | Remove whitespace-only text events |
+  | `open_tags/1` | Extract only opening tag events |
+  | `text_content/1` | Extract text content as strings |
+  | `check_errors/1` | Check for parse errors in event list |
+  | `position/1` | Convert location tuple to line/column |
+
+  ## Event Types
+
+  The parser emits these event types:
+
+  | Event | Description |
+  |-------|-------------|
+  | `{:start_document, nil}` | Document start |
+  | `{:end_document, nil}` | Document end |
+  | `{:start_element, name, attrs, loc}` | Opening tag with attributes |
+  | `{:end_element, name}` or `{:end_element, name, loc}` | Closing tag |
+  | `{:characters, content, loc}` | Text content |
+  | `{:comment, content, loc}` | XML comment |
+  | `{:prolog, "xml", attrs, loc}` | XML declaration |
+  | `{:processing_instruction, target, content, loc}` | Processing instruction |
+  | `{:dtd, content, loc}` | DOCTYPE declaration |
+  | `{:error, message, loc}` | Parse error |
+
+  ## Location Tuple
+
+  The `loc` tuple is `{line, line_start, byte_offset}` where:
+  - `line` - 1-based line number
+  - `line_start` - Byte offset where current line begins
+  - `byte_offset` - Absolute byte position from document start
+
+  ## Examples
+
+      # Parse to list
+      events = FnXML.parse("<root><item>Hello</item></root>")
+      # => [{:start_document, nil}, {:start_element, "root", [], {1, 0, 1}}, ...]
+
+      # Parse as stream (lazy evaluation)
+      FnXML.parse_stream("<root>...</root>")
+      |> Stream.filter(fn {:start_element, _, _, _} -> true; _ -> false end)
+      |> Enum.to_list()
+
+      # Halt on first error
+      FnXML.parse_stream(xml)
+      |> FnXML.halt_on_error()
+      |> Enum.to_list()
+
+      # Fully XML Spec Compliant Parsing
+      stream
+      |> FnXML.Utf16.to_utf8()                  # Ensure UTF-16 will be work
+      |> FnXML.Validate.characters()            # Ensure only valid characters are present
+      |> FnXML.Normalize.line_endings_stream()  # convert /r, /r/n -> /n
+      |> FnXML.parse_stream()                   # Generate a stream of XML events
+      |> FnXML.Validate.well_formed()           # validate that open/close tags are properly matched
+      |> FnXML.Validate.attributes()            # validate that attributes are unique
+      |> FnXML.Validate.comments()              # Ensure comments don't have '--' in them
+      |> FnXML.Validate.namespaces()            # Ensure namespace prefixes are properly declared
+  """
+
+  require Logger
+
+  @doc """
+  Parse an XML string into a list of events.
+
+  This is the simplest way to parse XML - it eagerly consumes the entire
+  document and returns all events as a list.
+
+  ## Parameters
+
+  - `xml` - The XML document as a binary string
+
+  ## Returns
+
+  A list of event tuples.
+
+  ## Examples
+
+      iex> FnXML.parse("<root>Hello</root>")
+      [
+        {:start_document, nil},
+        {:start_element, "root", [], {1, 0, 1}},
+        {:characters, "Hello", {1, 0, 6}},
+        {:end_element, "root", {1, 0, 12}},
+        {:end_document, nil}
+      ]
+
+      iex> FnXML.parse("<item attr=\\"value\\"/>")
+      [
+        {:start_document, nil},
+        {:start_element, "item", [{"attr", "value"}], {1, 0, 1}},
+        {:end_element, "item"},
+        {:end_document, nil}
+      ]
+
+  """
+  @spec parse(binary()) :: [tuple()]
+  def parse(xml) when is_binary(xml) do
+    xml
+    |> FnXML.Parser.parse()
+    |> Enum.to_list()
+  end
+
+  @doc """
+  Parse an XML string into a lazy stream of events.
+
+  Events are generated on-demand as you consume the stream, making this
+  memory-efficient for large documents. Supports early termination with
+  functions like `Enum.take/2`.
+
+  ## Parameters
+
+  - `xml` - The XML document as a binary string
+
+  ## Returns
+
+  A `Stream` of event tuples.
+
+  ## Examples
+
+      # Lazy evaluation - only parses as needed
+      FnXML.parse_stream(large_xml)
+      |> Enum.take(10)
+
+      # Stream transformations
+      FnXML.parse_stream(xml)
+      |> Stream.filter(fn {:characters, _, _} -> true; _ -> false end)
+      |> Stream.map(fn {:characters, content, _} -> content end)
+      |> Enum.to_list()
+
+      # Find first matching element
+      FnXML.parse_stream(xml)
+      |> Enum.find(fn {:start_element, "target", _, _} -> true; _ -> false end)
+
+  """
+  @spec parse_stream(binary()) :: Enumerable.t()
+  def parse_stream(xml) when is_binary(xml) do
+    FnXML.Parser.parse(xml)
+  end
+
+  @doc """
+  Halt the stream when an error event is encountered.
+
+  When an `{:error, message, loc}` event is seen, the stream emits that
+  error event and then halts. Useful for fail-fast parsing where you want
+  to stop processing on the first parse error.
+
+  ## Parameters
+
+  - `events` - Enumerable of XML events
+
+  ## Returns
+
+  A stream that halts after the first error.
+
+  ## Examples
+
+      # Stop on first error
+      FnXML.parse_stream(malformed_xml)
+      |> FnXML.halt_on_error()
+      |> Enum.to_list()
+      # => [...events..., {:error, "Expected '>'", {3, 20, 45}}]
+
+      # Combine with other stream operations
+      FnXML.parse_stream(xml)
+      |> FnXML.filter_whitespace()
+      |> FnXML.halt_on_error()
+      |> Enum.to_list()
+
+  """
+  @spec halt_on_error(Enumerable.t()) :: Enumerable.t()
+  def halt_on_error(events) do
+    Stream.transform(events, :cont, fn
+      {:error, _, _} = error, :cont ->
+        {[error], :halt}
+
+      _event, :halt ->
+        {:halt, :halt}
+
+      event, :cont ->
+        {[event], :cont}
+    end)
+  end
+
+  @doc """
+  Log error events to the console while passing them through.
+
+  When an `{:error, message, loc}` event is seen, it logs a warning with
+  the error details and then passes the event through unchanged. The stream
+  continues processing after errors.
+
+  ## Parameters
+
+  - `events` - Enumerable of XML events
+  - `opts` - Options (optional)
+    - `:level` - Log level (`:debug`, `:info`, `:warning`, `:error`). Default: `:warning`
+    - `:prefix` - Prefix for log messages. Default: `"XML parse error"`
+
+  ## Returns
+
+  A stream with errors logged.
+
+  ## Examples
+
+      # Log errors as warnings (default)
+      FnXML.parse_stream(xml)
+      |> FnXML.log_on_error()
+      |> Enum.to_list()
+      # Logs: [warning] XML parse error at line 3: Expected '>'
+
+      # Log errors at error level with custom prefix
+      FnXML.parse_stream(xml)
+      |> FnXML.log_on_error(level: :error, prefix: "Parse failure")
+      |> Enum.to_list()
+
+  """
+  @spec log_on_error(Enumerable.t(), keyword()) :: Enumerable.t()
+  def log_on_error(events, opts \\ []) do
+    level = Keyword.get(opts, :level, :warning)
+    prefix = Keyword.get(opts, :prefix, "XML parse error")
+
+    Stream.map(events, fn
+      {:error, message, {line, line_start, byte_offset}} = event ->
+        column = byte_offset - line_start
+        Logger.log(level, "#{prefix} at line #{line}, column #{column}: #{message}")
+        event
+
+      event ->
+        event
+    end)
+  end
+
+  @doc """
+  Filter out whitespace-only text events from an event stream.
+
+  Useful for simplifying event streams when whitespace between elements
+  is not significant.
+
+  ## Parameters
+
+  - `events` - Enumerable of XML events
+
+  ## Returns
+
+  A stream with whitespace-only text events removed.
+
+  ## Examples
+
+      FnXML.parse_stream(xml)
+      |> FnXML.filter_whitespace()
+      |> Enum.to_list()
+
+  """
+  @spec filter_whitespace(Enumerable.t()) :: Enumerable.t()
+  def filter_whitespace(events) do
+    Stream.reject(events, fn
+      {:characters, content, _loc} -> String.trim(content) == ""
+      _ -> false
+    end)
+  end
+
+  @doc """
+  Extract only open tag events from an event stream.
+
+  ## Parameters
+
+  - `events` - Enumerable of XML events
+
+  ## Returns
+
+  A stream of only `{:start_element, name, attrs, loc}` events.
+
+  ## Examples
+
+      FnXML.parse_stream(xml)
+      |> FnXML.open_tags()
+      |> Enum.map(fn {:start_element, name, _, _} -> name end)
+      # => ["root", "child1", "child2", ...]
+
+  """
+  @spec open_tags(Enumerable.t()) :: Enumerable.t()
+  def open_tags(events) do
+    Stream.filter(events, fn
+      {:start_element, _, _, _} -> true
+      _ -> false
+    end)
+  end
+
+  @doc """
+  Extract text content from an event stream.
+
+  Returns only the text content, discarding structure and location info.
+
+  ## Parameters
+
+  - `events` - Enumerable of XML events
+
+  ## Returns
+
+  A stream of text content strings.
+
+  ## Examples
+
+      FnXML.parse_stream("<root>Hello <b>World</b>!</root>")
+      |> FnXML.text_content()
+      |> Enum.join("")
+      # => "Hello World!"
+
+  """
+  @spec text_content(Enumerable.t()) :: Enumerable.t()
+  def text_content(events) do
+    events
+    |> Stream.filter(fn
+      {:characters, _, _} -> true
+      _ -> false
+    end)
+    |> Stream.map(fn {:characters, content, _} -> content end)
+  end
+
+  @doc """
+  Check if the event stream contains any parse errors.
+
+  ## Parameters
+
+  - `events` - List or enumerable of XML events
+
+  ## Returns
+
+  - `{:ok, events}` if no errors found
+  - `{:error, errors}` if errors found, where errors is a list of error tuples
+
+  ## Examples
+
+      case FnXML.check_errors(FnXML.parse(xml)) do
+        {:ok, events} ->
+          # Process valid XML
+        {:error, errors} ->
+          Enum.each(errors, fn {:error, msg, {line, _, _}} ->
+            IO.puts("Line \#{line}: \#{msg}")
+          end)
+      end
+
+  """
+  @spec check_errors(Enumerable.t()) :: {:ok, [tuple()]} | {:error, [tuple()]}
+  def check_errors(events) when is_list(events) do
+    errors =
+      Enum.filter(events, fn
+        {:error, _, _} -> true
+        _ -> false
+      end)
+
+    if errors == [] do
+      {:ok, events}
+    else
+      {:error, errors}
+    end
+  end
+
+  def check_errors(events) do
+    events
+    |> Enum.to_list()
+    |> check_errors()
+  end
+
+  @doc """
+  Get the position (line, column) from a location tuple.
+
+  ## Parameters
+
+  - `loc` - Location tuple `{line, line_start, byte_offset}`
+
+  ## Returns
+
+  `{line, column}` tuple with 1-based line and 0-based column.
+
+  ## Examples
+
+      {:start_element, "element", [], loc} = event
+      {line, column} = FnXML.position(loc)
+      IO.puts("Element at line \#{line}, column \#{column}")
+
+  """
+  @spec position({integer(), integer(), integer()}) :: {integer(), integer()}
+  def position({line, line_start, byte_offset}) do
+    {line, byte_offset - line_start}
+  end
+end

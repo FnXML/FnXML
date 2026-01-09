@@ -1,221 +1,222 @@
 # FnXML
 
-This is an Elixir library of tools for manipulate XML in a functional manner, including tools using Streams.  It also provides a way to encode/decode
-"Native Data Structures" to/from an XML Stream.
+A functional XML library for Elixir with streaming support and three standard API paradigms: DOM, SAX, and StAX.
+
+## Architecture
 
 ```
- ----------------   ----------------
-| Encoder        | | Decoder        |
- ----------------   ----------------
- -----------------------------------   ----------------   ----------------   -------------
-|  Native Data Structures           | | XML Parser     | | XML Formatter  | | Transformer |
- -----------------------------------   ----------------   ----------------   -------------
- -----------------------------------------------------------------------------------------
-|                                        FnXML.Stream                                     |
- -----------------------------------------------------------------------------------------
- -----------------------------------------------------------------------------------------
-|                                           FnXML                                         |
- -----------------------------------------------------------------------------------------
+ ┌─────────────────────────────────────────────────────────────────┐
+ │                        High-Level APIs                          │
+ ├─────────────────┬─────────────────────┬─────────────────────────┤
+ │  FnXML.DOM      │  FnXML.SAX          │  FnXML.StAX             │
+ │  (Tree)         │  (Push Callbacks)   │  (Pull Cursor)          │
+ │  O(n) memory    │  O(1) memory        │  O(1) memory            │
+ ├─────────────────┴─────────────────────┴─────────────────────────┤
+ │                     FnXML.Stream                                │
+ │            Event stream transformations & formatting            │
+ ├─────────────────────────────────────────────────────────────────┤
+ │  FnXML.Namespaces          │  FnXML.Stream.SimpleForm           │
+ │  Namespace resolution      │  Saxy compatibility                │
+ ├─────────────────────────────────────────────────────────────────┤
+ │                      FnXML.Parser                               │
+ │              NimbleParsec-based streaming parser                │
+ └─────────────────────────────────────────────────────────────────┘
 ```
 
-# What is an FnXML.Stream?
-
-XML is difficult to stream as it is defined.  This is because valid
-XML must end with a valid matching end tag to be correct.
-Consequently in order to ensure that the XML expression is valid the
-entire XML must be consumed.  XML with a root tag, that contains 10Tb
-of data cannot be confirmed to be correct unless the entire 10Tb is
-parsed; which can be a bit inconvenient.
-
-This module makes *one little* assumption, and that assumption is that
-the XML is already correct, so we won't worry about that part.  It
-also works if it is ok to determine late in processing that there is
-an error in the XML.
-
-This assumption frees us to consume XML differently.  An FnXML.Stream is
-a list of _open_tag_, _text_, and _close_tag_ elements, which represent
-the elements as they were encountered in the XML string/file.
-
-## Example:
-
-```xml
-  <demo:root type="info">
-    <description>some descriptive text</description>
-    <address>
-      <name>John Doe</name>
-      <street>42 Main St.</street>
-      <city>Ely</city>
-      <state>MN</state>
-      <zip>55731<zip>
-    </address>
-  </demo:root>
-```
-
-XML Stream Tools has a parser which can parse this XML and emit it to a Stream like:
-(location data is omitted to simplify the example)
+## Quick Start
 
 ```elixir
-[
-  {:open_tag, [tag: "root", namespace: "demo", attr: [{"type", "info"}]},
-  {:open_tag, [tag: "description"]},
-  {:text, ["some descriptive text"]},
-  {:close_tag, [tag: "description"]},
-  {:open_tag, [tag: "address"},
-  {:open_tag, [tag: "name"},
-  {:text, ["John Doe"]},
-  {:close_tag, [tag: "name"},
-  {:open_tag, [tag: "street"},
-  {:text, ["42 Main St."]
-  {:close_tag, [tag: "street"},
-  {:open_tag, [tag: "city"},
-  {:text, ["Ely"]
-  {:close_tag, [tag: "city"},
-  {:open_tag, [tag: "state"},
-  {:text, ["MN"]
-  {:close_tag, [tag: "state"},
-  {:open_tag, [tag: "zip"},
-  {:text, ["55731"]
-  {:close_tag, [tag: "zip"]},
-  {:close_tag, [tag: "address"]},
-  {:close_tag, [tag: "root", namespace: "demo"]}
-]
-```
+# Parse XML to DOM tree
+doc = FnXML.DOM.parse("<root><child id=\"1\">Hello</child></root>")
+doc.root.tag  # => "root"
 
-In this format elements of the XML become a stream of XML parts, which
-could be operated on and transformed through a stream.  It is still
-possible to keep track of parent child relationships using a stack.
-
-Once in this format existing tools can be used to operate on the
-stream, such as filter elements, convert it back to XML, format the
-XML.
-
-Additionally there are tools which can be used to take an "Native Data
-Structure" and convert it to the XML Stream format.
-
-## Example:
-
-```elixir
-defmodule Address
-  defstruct [:name, :street, :city, :state, :zip]
+# SAX callback-based parsing
+defmodule CountHandler do
+  use FnXML.SAX.Handler
+  def start_element(_uri, _local, _qname, _attrs, count), do: {:ok, count + 1}
 end
+{:ok, 2} = FnXML.SAX.parse("<root><child/></root>", CountHandler, 0)
 
-address = %Address{name: "John Doe", street: "42 Main St.", city: "Ely", state: "MN", zip: 55731}
-
-XMLStreamTools.NativeDataStruct.encode(address, [tag: "address"])
+# StAX pull-based parsing
+reader = FnXML.StAX.Reader.new("<root attr=\"val\"/>")
+reader = FnXML.StAX.Reader.next(reader)
+FnXML.StAX.Reader.local_name(reader)  # => "root"
+FnXML.StAX.Reader.attribute_value(reader, nil, "attr")  # => "val"
 ```
-
-which would result in a list like:
-```elixir
-[
-  {:open_tag, [tag: "address"},
-  {:open_tag, [tag: "name"},
-  {:text, ["John Doe"]},
-  {:close_tag, [tag: "name"},
-  {:open_tag, [tag: "street"},
-  {:text, ["42 Main St."]
-  {:close_tag, [tag: "street"},
-  {:open_tag, [tag: "city"},
-  {:text, ["Ely"]
-  {:close_tag, [tag: "city"},
-  {:open_tag, [tag: "state"},
-  {:text, ["MN"]
-  {:close_tag, [tag: "state"},
-  {:open_tag, [tag: "zip"},
-  {:text, ["55731"]
-  {:close_tag, [tag: "zip"},
-  {:close_tag, [tag: "address"},
-]
-```
-
-From there it could be passed to several different tools:
-
-XML Format:
-```elixir
-address
-|> XMLStreamTools.XMLStream.Format()
-```
-```xml
-<address><name>John Doe</name><street>42 Main St.</street><city>Ely</city><state>MN</state><zip>55731<zip><address>
-```
-
-or:
-
-```elixir
-address
-|> XMLStreamTools.XMLStream.Format(pretty: true, indent: 4)
-```
-
-```xml
-<address>
-    <name>John Doe</name>
-    <street>42 Main St.</street>
-    <city>Ely</city>
-    <state>MN</state>
-    <zip>55731<zip>
-</address>
-```
-
-The XML Stream could also be converted back to the same or a different Native Data Structure.
-
-```elixir
-address |> XMLStreamTools.NativeDataType.decode(%Address{})
-
-%Address{name: "John Doe", street: "42 Main St.", city: "Ely", state: "MN", zip: 55731}
-```    
-
-(Disclaimer) This is very Alpha software at the moment, and definitely a work in progress, don't bet your business on it.
-
-Implemented Tools:
-
-- a NimbleParsec XML parser
-- a transformer - this can be used to take the stream of XML elements and output another stream of
-  modified elements or anything else really.
-- an inspector, which will write stream elements to the console, as they are processed.
-
-In Progress:
-- a decoder this builds on the transformer and will convert XML to elixir Maps.  As part of this
-  there is an Elixir Behaviour called Formatter which is defined to specify how to convert the
-  XML to a Map.  New implementations of this behaviour can be defined to change how the XML is
-  converted.  For example if your XML lends itself to going into an Explorer structure, that
-  is possible to create with the Formatter.
-
-ToDo:
-- add a filter which takes XPATH or something like it to include/exclude elements from the stream.
-
-
-## Contributions
-
-Any contributions/suggestions are welcome.
-
-## The dreaded To Do section:
-
-- write some documentation, so other people can find this useful.
-- update the parser so it reads from a stream, currently it just takes input as a binary.
-- make an inspect that writes to Logger
-- make a filter that takes XPath like input to select or exclude XML from the stream
-- make an encoder protocol.  To encode Maps, Lists and Structs into XML
-
 
 ## Installation
 
-If [available in Hex](https://hex.pm/docs/publish), (**Note** not yet available in hex) the package can be installed
-by adding `xmlstreamtools` to your list of dependencies in `mix.exs`:
-
 ```elixir
 def deps do
-  [
-    {:fnxml, "~> 0.1.0"}
-  ]
+  [{:fnxml, "~> 0.1.0"}]
 end
 ```
 
-Documentation can be generated with [ExDoc](https://github.com/elixir-lang/ex_doc)
-and published on [HexDocs](https://hexdocs.pm). Once published, the docs can
-be found at <https://hexdocs.pm/xmlstreamtools>.
+## APIs
 
-## My Use Case
+### DOM (Document Object Model)
 
-I am requesting data from a service which return XML.  I use this to
-parse the returned data and generate a stream of elements.  The
-elements are filtered, then transformed into elixir maps/lists, and
-ultimatly displayed as formatted JSON.
+Build an in-memory tree representation. Best for small-to-medium documents where you need random access.
+
+```elixir
+# Parse
+doc = FnXML.DOM.parse("<root><child id=\"1\">text</child></root>")
+
+# Navigate
+doc.root.tag                                    # => "root"
+doc.root.children                               # => [%Element{...}]
+FnXML.DOM.Element.get_attribute(elem, "id")     # => "1"
+
+# Serialize
+FnXML.DOM.to_string(doc)                        # => "<root>..."
+FnXML.DOM.to_string(doc, pretty: true)          # => formatted XML
+
+# Build programmatically
+alias FnXML.DOM.Element
+elem = Element.new("div", [{"class", "container"}], ["Hello"])
+```
+
+### SAX (Simple API for XML)
+
+Push-based event callbacks. Best for large documents where you only need specific data.
+
+```elixir
+defmodule MyHandler do
+  use FnXML.SAX.Handler
+
+  @impl true
+  def start_element(_uri, local_name, _qname, _attrs, state) do
+    {:ok, [local_name | state]}
+  end
+
+  @impl true
+  def characters(text, state) do
+    {:ok, Map.update(state, :text, text, &(&1 <> text))}
+  end
+
+  @impl true
+  def end_document(state) do
+    {:ok, Enum.reverse(state)}
+  end
+end
+
+{:ok, result} = FnXML.SAX.parse(xml, MyHandler, [])
+```
+
+**Callbacks:** `start_document/1`, `end_document/1`, `start_element/5`, `end_element/4`, `characters/2`
+
+**Return values:** `{:ok, state}`, `{:halt, state}` (stop early), `{:error, reason}`
+
+### StAX (Streaming API for XML)
+
+Pull-based cursor navigation. Best for large documents with complex processing logic.
+
+```elixir
+reader = FnXML.StAX.Reader.new(xml)
+
+# Pull events one at a time (lazy - O(1) memory)
+reader = FnXML.StAX.Reader.next(reader)
+
+# Query current event
+FnXML.StAX.Reader.event_type(reader)      # => :start_element
+FnXML.StAX.Reader.local_name(reader)      # => "root"
+FnXML.StAX.Reader.attribute_count(reader) # => 2
+FnXML.StAX.Reader.attribute_value(reader, nil, "id")  # => "123"
+
+# Convenience methods
+FnXML.StAX.Reader.start_element?(reader)  # => true
+FnXML.StAX.Reader.has_next?(reader)       # => true
+{text, reader} = FnXML.StAX.Reader.element_text(reader)  # read all text in element
+```
+
+**Writer for building XML:**
+
+```elixir
+xml = FnXML.StAX.Writer.new()
+|> FnXML.StAX.Writer.start_document()
+|> FnXML.StAX.Writer.start_element("root")
+|> FnXML.StAX.Writer.attribute("id", "1")
+|> FnXML.StAX.Writer.characters("Hello")
+|> FnXML.StAX.Writer.end_element()
+|> FnXML.StAX.Writer.to_string()
+# => "<?xml version=\"1.0\"?><root id=\"1\">Hello</root>"
+```
+
+### Low-Level Stream API
+
+Direct access to the event stream for custom processing.
+
+```elixir
+# Parse to event stream
+FnXML.Parser.parse("<root><child/></root>")
+|> Enum.to_list()
+# => [
+#   {:start_element, "root", [], {1, 0, 1}},
+#   {:start_element, "child", [], {1, 0, 7}},
+#   {:end_element, "child", {1, 0, 14}},
+#   {:end_element, "root", {1, 0, 22}}
+# ]
+
+# With namespace resolution
+FnXML.Parser.parse("<root xmlns=\"http://example.org\"><child/></root>")
+|> FnXML.Namespaces.resolve()
+|> Enum.to_list()
+# => [{:start_element, {"http://example.org", "root"}, [...], ...}, ...]
+
+# Convert stream to XML
+events
+|> FnXML.Stream.to_xml()
+|> Enum.join()
+```
+
+**Event types (W3C StAX-compatible):**
+- `{:start_element, tag, attrs, location}` - Start element
+- `{:end_element, tag}` or `{:end_element, tag, location}` - End element
+- `{:characters, content, location}` - Text content
+- `{:comment, content, location}` - Comment
+- `{:cdata, content, location}` - CDATA section
+- `{:prolog, "xml", attrs, location}` - XML declaration
+- `{:processing_instruction, target, data, location}` - Processing instruction
+
+### Saxy Compatibility
+
+For codebases using Saxy's SimpleForm format:
+
+```elixir
+# Decode to SimpleForm tuple
+{"root", attrs, children} = FnXML.Stream.SimpleForm.decode("<root><child/></root>")
+
+# Encode back to XML
+FnXML.Stream.SimpleForm.encode({"root", [], ["text"]})
+
+# Convert between SimpleForm and DOM
+elem = FnXML.Stream.SimpleForm.to_dom({"root", [{"id", "1"}], ["text"]})
+tuple = FnXML.Stream.SimpleForm.from_dom(elem)
+```
+
+## Choosing an API
+
+| Use Case | Recommended API |
+|----------|-----------------|
+| Small documents, need random access | DOM |
+| Large documents, extract specific data | SAX |
+| Large documents, complex state machine | StAX |
+| Stream transformations | Low-level Stream |
+| Saxy migration/interop | SimpleForm |
+
+## Features
+
+- **Streaming parser** - Process XML incrementally without loading entire document
+- **Namespace support** - Full XML namespace resolution
+- **Three standard APIs** - DOM, SAX, StAX for different use cases
+- **Lazy evaluation** - StAX Reader uses O(1) memory
+- **Location tracking** - Line/column info for error reporting
+- **Saxy compatible** - SimpleForm format for easy migration
+
+## License
+
+MIT
+
+## Contributing
+
+Contributions welcome! Please open an issue or PR on GitHub.

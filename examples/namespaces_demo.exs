@@ -4,7 +4,7 @@
 # Tests namespace prefix declarations and scoping
 
 alias FnXML.Parser
-alias FnXML.Stream.Validate
+alias FnXML.Validate
 alias FnXML.Error
 
 defmodule NamespacesDemo do

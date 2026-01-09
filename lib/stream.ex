@@ -4,17 +4,90 @@ end
 
 defmodule FnXML.Stream do
   @moduledoc """
-  This module provides functions for transforming a stream of XML elements.
+  Stream transformation functions for XML event streams.
 
-  Event formats:
-  - `{:doc_start, nil}` - Document start marker
-  - `{:doc_end, nil}` - Document end marker
-  - `{:open, tag, attrs, loc}` - Opening tag
-  - `{:close, tag}` or `{:close, tag, loc}` - Closing tag
-  - `{:text, content, loc}` - Text content
-  - `{:comment, content, loc}` - Comment
-  - `{:prolog, "xml", attrs, loc}` - XML prolog
-  - `{:proc_inst, name, content, loc}` - Processing instruction
+  This module provides composable functions for filtering, transforming, and
+  serializing XML event streams produced by `FnXML.Parser`. All functions operate
+  on Elixir streams and maintain O(1) memory complexity.
+
+  ## Specifications
+
+  - W3C XML 1.0 (Fifth Edition): https://www.w3.org/TR/xml/
+
+  ## Event Formats
+
+  The parser and stream functions operate on these event types:
+
+  | Event | Description |
+  |-------|-------------|
+  | `{:start_document, nil}` | Document start marker |
+  | `{:end_document, nil}` | Document end marker |
+  | `{:start_element, tag, attrs, loc}` | Opening tag |
+  | `{:end_element, tag}` or `{:end_element, tag, loc}` | Closing tag |
+  | `{:characters, content, loc}` | Text content |
+  | `{:comment, content, loc}` | Comment |
+  | `{:prolog, "xml", attrs, loc}` | XML prolog |
+  | `{:processing_instruction, name, content, loc}` | Processing instruction |
+
+  ## Use Cases
+
+  ### Serialize XML Events to String
+
+      xml_string = FnXML.Parser.parse("<root><child>text</child></root>")
+      |> FnXML.Stream.to_xml()
+      |> Enum.join()
+      # => "<root><child>text</child></root>"
+
+  ### Pretty Print XML
+
+      pretty_xml = FnXML.Parser.parse("<root><child/></root>")
+      |> FnXML.Stream.to_xml(pretty: true, indent: 4)
+      |> Enum.join()
+      # => "<root>\\n    <child/>\\n</root>\\n"
+
+  ### Filter Whitespace
+
+      FnXML.Parser.parse(xml)
+      |> FnXML.Stream.filter_ws()
+      |> Enum.to_list()
+
+  ### Transform with Path Context
+
+      # Extract all <item> elements content
+      FnXML.Parser.parse(xml)
+      |> FnXML.Stream.transform(fn event, path, acc ->
+        case {event, path} do
+          {{:characters, content, _}, [{"item", _} | _]} -> {content, acc}
+          _ -> acc
+        end
+      end)
+      |> Enum.to_list()
+
+  ### Debug Stream with Tap
+
+      FnXML.Parser.parse(xml)
+      |> FnXML.Stream.tap(fn event, path ->
+        IO.inspect({event, path}, label: "XML Event")
+      end, label: "debug")
+      |> Enum.to_list()
+
+  ### Filter by Namespace
+
+      # Include only elements in specific namespace
+      FnXML.Parser.parse(xml)
+      |> FnXML.Stream.filter_namespaces(["http://example.org"], include: true)
+      |> Enum.to_list()
+
+  ## API Overview
+
+  | Function | Description |
+  |----------|-------------|
+  | `to_xml/2` | Serialize events to XML string stream |
+  | `transform/3` | Apply custom transformation with path context |
+  | `filter/3` | Filter events based on predicate with path context |
+  | `filter_ws/1` | Remove whitespace-only text events |
+  | `filter_namespaces/3` | Filter events by namespace URI |
+  | `tap/3` | Inspect events without modifying stream |
   """
 
   alias FnXML.Element
@@ -29,13 +102,13 @@ defmodule FnXML.Stream do
   ## Example
 
       iex> [
-      iex>   {:open, "fizz:foo", [{"a", "1"}], {1, 0, 1}},
-      iex>   {:text, "hello", {1, 0, 20}},
-      iex>   {:close, "fizz:foo"}
+      iex>   {:start_element, "fizz:foo", [{"a", "1"}], {1, 0, 1}},
+      iex>   {:characters, "hello", {1, 0, 20}},
+      iex>   {:end_element, "fizz:foo"}
       iex> ]
       iex> |> FnXML.Stream.to_xml()
       iex> |> Enum.join()
-      "<fizz:foo a=\\"1\\">hello</fizz:foo>"
+      "<fizz:foo a=\"1\">hello</fizz:foo>"
   """
   def to_xml(stream, opts \\ [])
   def to_xml(list, opts) when is_list(list), do: Stream.into(list, []) |> to_xml(opts)
@@ -74,28 +147,28 @@ defmodule FnXML.Stream do
   end
 
   # Document start/end markers emit nothing
-  defp format_element({:doc_start, _}, path, _acc), do: {length(path), ""}
-  defp format_element({:doc_end, _}, path, _acc), do: {length(path), ""}
+  defp format_element({:start_document, _}, path, _acc), do: {length(path), ""}
+  defp format_element({:end_document, _}, path, _acc), do: {length(path), ""}
 
   defp format_element({:prolog, tag, attrs, _loc}, path, _acc) do
     attrs_str = format_attributes(attrs)
     {length(path), "<?#{tag}#{attrs_str}?>"}
   end
 
-  defp format_element({:open, tag, attrs, _loc}, path, _acc) do
+  defp format_element({:start_element, tag, attrs, _loc}, path, _acc) do
     attrs_str = format_attributes(attrs)
     {length(path) - 1, "<#{tag}#{attrs_str}>"}
   end
 
-  defp format_element({:close, tag}, path, _acc) do
+  defp format_element({:end_element, tag}, path, _acc) do
     {length(path) - 1, "</#{tag}>"}
   end
 
-  defp format_element({:close, tag, _loc}, path, _acc) do
+  defp format_element({:end_element, tag, _loc}, path, _acc) do
     {length(path) - 1, "</#{tag}>"}
   end
 
-  defp format_element({:text, content, _loc}, path, _acc) do
+  defp format_element({:characters, content, _loc}, path, _acc) do
     if Regex.match?(~r/[<>]/, content) do
       {length(path), "<![CDATA[#{content}]]>"}
     else
@@ -107,7 +180,7 @@ defmodule FnXML.Stream do
     {length(path), "<!--#{content}-->"}
   end
 
-  defp format_element({:proc_inst, name, content, _loc}, path, _acc) do
+  defp format_element({:processing_instruction, name, content, _loc}, path, _acc) do
     {length(path), "<?#{name} #{content}?>"}
   end
 
@@ -118,7 +191,7 @@ defmodule FnXML.Stream do
 
   fun:
       a function that takes three arguments:
-          - element: the current element, ex: {:open, "foo", [], {1, 0, 1}}
+          - element: the current element, ex: {:start_element, "foo", [], {1, 0, 1}}
           - stack: the current stack of open tags (the path), ex: [ {"bar", ""}, {"foo", ""} ], each element on the stack
             contains a tuple: {tag, namespace}.
           - the current accumulator
@@ -131,7 +204,7 @@ defmodule FnXML.Stream do
 
   Note the stack is a list of tuples, where the first element is the tag name and the second element is the namespace.
 
-  See XMLStreamTools.Inspector for an example of how to use this module.
+  See FnXML.Stream.Inspector for an example of how to use this module.
   """
   @valid_element_id Element.id_list()
 
@@ -142,23 +215,23 @@ defmodule FnXML.Stream do
 
   defp initial_acc(acc, fun), do: {[], acc, fun}
 
-  defp process_item({:open, tag, _attrs, _loc} = element, {stack, acc, fun}) do
+  defp process_item({:start_element, tag, _attrs, _loc} = element, {stack, acc, fun}) do
     tag_tuple = Element.tag(tag)
     new_stack = [tag_tuple | stack]
     fun.(element, new_stack, acc) |> next(new_stack, fun)
   end
 
-  defp process_item({:close, _tag} = element, {[], _, _}) do
+  defp process_item({:end_element, _tag} = element, {[], _, _}) do
     tag_str = Element.tag_string(element)
     error(element, "unexpected close tag #{tag_str}, missing open tag")
   end
 
-  defp process_item({:close, _tag, _loc} = element, {[], _, _}) do
+  defp process_item({:end_element, _tag, _loc} = element, {[], _, _}) do
     tag_str = Element.tag_string(element)
     error(element, "unexpected close tag #{tag_str}, missing open tag")
   end
 
-  defp process_item({:close, tag} = element, {[head | new_stack] = stack, acc, fun}) do
+  defp process_item({:end_element, tag} = element, {[head | new_stack] = stack, acc, fun}) do
     tag_tuple = Element.tag(tag)
 
     cond do
@@ -173,7 +246,7 @@ defmodule FnXML.Stream do
     end
   end
 
-  defp process_item({:close, tag, _loc} = element, {[head | new_stack] = stack, acc, fun}) do
+  defp process_item({:end_element, tag, _loc} = element, {[head | new_stack] = stack, acc, fun}) do
     tag_tuple = Element.tag(tag)
 
     cond do
@@ -188,11 +261,14 @@ defmodule FnXML.Stream do
     end
   end
 
-  defp process_item({:text, content, _loc} = element, {[], acc, fun}) do
+  defp process_item({:characters, content, _loc} = element, {[], acc, fun}) do
     if String.match?(content, ~r/^[\s\n]*$/) do
       acc |> next([], fun)
     else
-      error(element, "Text element outside of a tag: '#{element |> inspect()}', a root element is required")
+      error(
+        element,
+        "Text element outside of a tag: '#{element |> inspect()}', a root element is required"
+      )
     end
   end
 
@@ -205,11 +281,11 @@ defmodule FnXML.Stream do
   end
 
   # Document start/end markers - pass through without modifying stack
-  defp process_item({:doc_start, _} = element, {stack, acc, fun}) do
+  defp process_item({:start_document, _} = element, {stack, acc, fun}) do
     fun.(element, stack, acc) |> next(stack, fun)
   end
 
-  defp process_item({:doc_end, _} = element, {stack, acc, fun}) do
+  defp process_item({:end_document, _} = element, {stack, acc, fun}) do
     fun.(element, stack, acc) |> next(stack, fun)
   end
 
@@ -241,7 +317,7 @@ defmodule FnXML.Stream do
 
   if fun is nil, the default function will display each element to the console.
   otherwise fun must be a function that takes two arguments:
-    - element: the current element, ex: {:open, "foo", [], {1, 0, 1}}
+    - element: the current element, ex: {:start_element, "foo", [], {1, 0, 1}}
     - path: the current stack of open tags (the path), ex: [ {"bar", ""}, {"foo", ""} ]
 
   The return value of the fun is discarded, and has no effect on the stream.  With tap, there is no way to modify the stream.
@@ -270,7 +346,7 @@ defmodule FnXML.Stream do
   arguments:
     - stream: the stream to filter
     - fun: a function that takes two arguments:
-      - element: the current element, ex: {:open, "foo", [], {1, 0, 1}}
+      - element: the current element, ex: {:start_element, "foo", [], {1, 0, 1}}
       - path: the current stack of open tags (the path), ex: [ {"bar", ""}, {"foo", ""} ]
       - acc: an accumulator which can be used to keep state between invocations.
 
@@ -284,14 +360,14 @@ defmodule FnXML.Stream do
       iex> FnXML.Stream.filter(stream, fn _, [{tag, ""} | _], _ -> {tag == "bar", []} end)
       iex> |> Enum.map(fn x -> x end)
       [
-        {:doc_start, nil},
-        {:open, "bar", [], {1, 0, 6}},
-        {:text, "1", {1, 0, 10}},
-        {:close, "bar", {1, 0, 12}},
-        {:open, "bar", [], {1, 0, 18}},
-        {:text, "2", {1, 0, 22}},
-        {:close, "bar", {1, 0, 24}},
-        {:doc_end, nil}
+        {:start_document, nil},
+        {:start_element, "bar", [], {1, 0, 6}},
+        {:characters, "1", {1, 0, 10}},
+        {:end_element, "bar", {1, 0, 12}},
+        {:start_element, "bar", [], {1, 0, 18}},
+        {:characters, "2", {1, 0, 22}},
+        {:end_element, "bar", {1, 0, 24}},
+        {:end_document, nil}
       ]
   """
   def filter(stream, fun, acc \\ []) do
@@ -300,8 +376,12 @@ defmodule FnXML.Stream do
       acc,
       fn
         # Pass through document start/end markers
-        {:doc_start, _} = element, _path, acc -> {element, acc}
-        {:doc_end, _} = element, _path, acc -> {element, acc}
+        {:start_document, _} = element, _path, acc ->
+          {element, acc}
+
+        {:end_document, _} = element, _path, acc ->
+          {element, acc}
+
         element, path, acc ->
           case fun.(element, path, acc) do
             {true, acc} -> {element, acc}
@@ -312,31 +392,70 @@ defmodule FnXML.Stream do
   end
 
   @doc """
-  Filter out whitespace only elements from the stream.
+  Filter out whitespace-only text events from the stream.
+
+  Removes `{:characters, content, loc}` events where `content` contains only
+  whitespace characters (spaces, tabs, newlines). Useful for cleaning up
+  streams where indentation whitespace is not significant.
+
+  ## Examples
+
+      FnXML.Parser.parse("<root>  <child/>  </root>")
+      |> FnXML.Stream.filter_ws()
+      |> Enum.to_list()
+      # Returns events without the whitespace text nodes
+
   """
+  @spec filter_ws(Enumerable.t()) :: Enumerable.t()
   def filter_ws(stream) do
     filter(stream, fn
-      {:text, content, _loc}, _, acc -> {not String.match?(content, ~r/^\s*$/), acc}
+      {:characters, content, _loc}, _, acc -> {not String.match?(content, ~r/^\s*$/), acc}
       _, _, acc -> {true, acc}
     end)
   end
 
   @doc """
-  Filter in/out specific namespaces from the stream
+  Filter events by namespace URI.
+
+  Includes or excludes elements (and their descendants) based on their
+  namespace. Useful for extracting specific vocabularies from mixed-namespace
+  documents.
+
+  ## Parameters
+
+  - `stream` - The XML event stream
+  - `ns_list` - List of namespace URIs to filter on
+  - `opts` - Options:
+    - `:include` - Include matching namespaces (default: true)
+    - `:exclude` - Exclude matching namespaces (default: false)
+
+  ## Examples
+
+      # Include only XHTML namespace
+      FnXML.Parser.parse(xml)
+      |> FnXML.Stream.filter_namespaces(["http://www.w3.org/1999/xhtml"])
+      |> Enum.to_list()
+
+      # Exclude SVG namespace
+      FnXML.Parser.parse(xml)
+      |> FnXML.Stream.filter_namespaces(["http://www.w3.org/2000/svg"], exclude: true)
+      |> Enum.to_list()
+
   """
+  @spec filter_namespaces(Enumerable.t(), [String.t()], keyword()) :: Enumerable.t()
   def filter_namespaces(stream, ns_list, opts \\ []) when is_list(ns_list) do
     include = Keyword.get(opts, :include, not Keyword.get(opts, :exclude, false))
 
     filter(stream, fn
-      {:open, tag, _attrs, _loc}, _, acc ->
+      {:start_element, tag, _attrs, _loc}, _, acc ->
         {_tag, ns} = Element.tag(tag)
         result = if ns in ns_list, do: include, else: not include
         {result, [result | acc]}
 
-      {:close, _tag}, _, [result | rest] ->
+      {:end_element, _tag}, _, [result | rest] ->
         {result, rest}
 
-      {:close, _tag, _loc}, _, [result | rest] ->
+      {:end_element, _tag, _loc}, _, [result | rest] ->
         {result, rest}
 
       _, _, [result | _] = acc ->

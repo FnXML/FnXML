@@ -2,7 +2,7 @@
 # Run with: mix run examples/error_demo.exs
 
 alias FnXML.Parser
-alias FnXML.Stream.Validate
+alias FnXML.Validate
 alias FnXML.Error
 alias FnXML.Parser.ErrorTransform
 
