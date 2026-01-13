@@ -12,6 +12,9 @@ A functional XML library for Elixir with streaming support and three standard AP
  │  (Tree)         │  (Push Callbacks)   │  (Pull Cursor)          │
  │  O(n) memory    │  O(1) memory        │  O(1) memory            │
  ├─────────────────┴─────────────────────┴─────────────────────────┤
+ │                    FnXML.Security                               │
+ │     C14N (Canonicalization) │ Signatures │ Encryption           │
+ ├─────────────────────────────────────────────────────────────────┤
  │                     FnXML.Stream                                │
  │            Event stream transformations & formatting            │
  ├─────────────────────────────────────────────────────────────────┤
@@ -220,6 +223,99 @@ tuple = FnXML.Stream.SimpleForm.from_dom(elem)
 | Large documents, complex state machine | StAX |
 | Stream transformations | Low-level Stream |
 | Saxy migration/interop | SimpleForm |
+| XML Signatures, Encryption | Security |
+
+## XML Security
+
+FnXML provides W3C-compliant XML Security support for canonicalization, signatures, and encryption.
+
+### Canonicalization (C14N)
+
+Transform XML to a canonical form for signing and comparison.
+
+```elixir
+# Canonical XML 1.0
+{:ok, canonical} = FnXML.Security.C14N.canonicalize(xml)
+
+# Exclusive Canonical XML (for signing document subsets)
+{:ok, canonical} = FnXML.Security.C14N.canonicalize(xml, algorithm: :exc_c14n)
+
+# With comments preserved
+{:ok, canonical} = FnXML.Security.C14N.canonicalize(xml, algorithm: :c14n_with_comments)
+```
+
+### XML Signatures
+
+Sign and verify XML documents following W3C XML Signature specification.
+
+```elixir
+# Generate RSA key pair
+private_key = :public_key.generate_key({:rsa, 2048, 65537})
+{:RSAPrivateKey, _, n, e, _, _, _, _, _, _, _} = private_key
+public_key = {:RSAPublicKey, n, e}
+
+# Sign a document (enveloped signature)
+{:ok, signed_xml} = FnXML.Security.Signature.sign(xml, private_key,
+  reference_uri: "",
+  signature_algorithm: :rsa_sha256,
+  digest_algorithm: :sha256,
+  c14n_algorithm: :exc_c14n,
+  type: :enveloped
+)
+
+# Verify a signed document
+case FnXML.Security.Signature.verify(signed_xml, public_key) do
+  {:ok, :valid} -> IO.puts("Signature is valid")
+  {:error, reason} -> IO.puts("Verification failed: #{inspect(reason)}")
+end
+
+# Get signature information
+{:ok, info} = FnXML.Security.Signature.info(signed_xml)
+info.signature_algorithm  # => :rsa_sha256
+info.c14n_algorithm       # => :exc_c14n
+```
+
+### XML Encryption
+
+Encrypt and decrypt XML content following W3C XML Encryption specification.
+
+```elixir
+# Generate a symmetric key
+key = FnXML.Security.Algorithms.generate_key(32)  # 256-bit key
+
+# Encrypt an element
+xml = ~s(<root><secret id="data">Sensitive info</secret></root>)
+{:ok, encrypted_xml} = FnXML.Security.Encryption.encrypt(xml, "#data", key,
+  algorithm: :aes_256_gcm,
+  type: :element
+)
+
+# Decrypt
+{:ok, decrypted_xml} = FnXML.Security.Encryption.decrypt(encrypted_xml, key)
+
+# With key transport (RSA-OAEP)
+{:ok, encrypted_xml} = FnXML.Security.Encryption.encrypt(xml, "#data", nil,
+  algorithm: :aes_256_gcm,
+  key_transport: {:rsa_oaep, recipient_public_key}
+)
+
+# Decrypt with private key
+{:ok, decrypted_xml} = FnXML.Security.Encryption.decrypt(encrypted_xml,
+  private_key: recipient_private_key
+)
+```
+
+### Supported Algorithms
+
+| Category | Algorithms |
+|----------|------------|
+| **Digest** | SHA-256, SHA-384, SHA-512 |
+| **Signature** | RSA-SHA256, RSA-SHA384, RSA-SHA512 |
+| **Encryption** | AES-128-GCM, AES-256-GCM, AES-128-CBC, AES-256-CBC |
+| **Key Transport** | RSA-OAEP |
+| **Canonicalization** | C14N 1.0, Exclusive C14N (with/without comments) |
+
+All cryptographic operations use Erlang/OTP built-in `:crypto` and `:public_key` modules.
 
 ## Features
 
@@ -228,6 +324,7 @@ tuple = FnXML.Stream.SimpleForm.from_dom(elem)
 - **Chunk boundary handling** - Mini-block approach handles elements spanning chunk boundaries
 - **Namespace support** - Full XML namespace resolution
 - **Three standard APIs** - DOM, SAX, StAX for different use cases
+- **XML Security** - W3C-compliant canonicalization, signatures, and encryption
 - **Lazy evaluation** - StAX Reader uses O(1) memory
 - **Location tracking** - Line/column info for error reporting
 - **Saxy compatible** - SimpleForm format for easy migration

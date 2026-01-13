@@ -10,6 +10,9 @@ Concise rules for using the FnXML library correctly.
 | Large file, extract specific data | `FnXML.SAX` |
 | Large file, stateful processing | `FnXML.StAX` |
 | Custom stream transformations | `FnXML.Parser` + `FnXML.Stream` |
+| Canonicalization for signing | `FnXML.Security.C14N` |
+| Sign/verify XML documents | `FnXML.Security.Signature` |
+| Encrypt/decrypt XML content | `FnXML.Security.Encryption` |
 
 ## DOM Rules
 
@@ -202,3 +205,149 @@ FnXML.Parser.parse(xml) |> FnXML.Namespaces.resolve()
 3. **Complex state machine:** StAX with explicit control flow
 4. **Transform and output:** Low-level stream pipeline
 5. **Small files with queries:** DOM for convenience
+
+## XML Security Rules
+
+### Canonicalization (C14N)
+
+```elixir
+# CORRECT: Basic canonicalization
+{:ok, canonical} = FnXML.Security.C14N.canonicalize(xml)
+
+# CORRECT: Exclusive C14N for document subsets
+{:ok, canonical} = FnXML.Security.C14N.canonicalize(xml, algorithm: :exc_c14n)
+
+# CORRECT: Preserve comments
+{:ok, canonical} = FnXML.Security.C14N.canonicalize(xml, algorithm: :c14n_with_comments)
+
+# Algorithms: :c14n, :c14n_with_comments, :exc_c14n, :exc_c14n_with_comments
+```
+
+### Signatures
+
+```elixir
+# CORRECT: Generate key pair for signing
+private_key = :public_key.generate_key({:rsa, 2048, 65537})
+{:RSAPrivateKey, _, n, e, _, _, _, _, _, _, _} = private_key
+public_key = {:RSAPublicKey, n, e}
+
+# CORRECT: Enveloped signature (signature inside document)
+{:ok, signed} = FnXML.Security.Signature.sign(xml, private_key,
+  reference_uri: "",           # Empty = whole document
+  type: :enveloped,
+  signature_algorithm: :rsa_sha256,
+  digest_algorithm: :sha256,
+  c14n_algorithm: :exc_c14n
+)
+
+# CORRECT: Verify signature
+{:ok, :valid} = FnXML.Security.Signature.verify(signed_xml, public_key)
+
+# CORRECT: Check signature info before verification
+{:ok, info} = FnXML.Security.Signature.info(signed_xml)
+info.signature_algorithm  # => :rsa_sha256
+info.c14n_algorithm       # => :exc_c14n
+info.references           # => [%{uri: "", digest_algorithm: :sha256}]
+```
+
+**Signature Types:**
+- `:enveloped` - Signature inside signed document
+- `:enveloping` - Signed data inside signature
+- `:detached` - Signature and data separate
+
+**Algorithms:**
+- Signature: `:rsa_sha256`, `:rsa_sha384`, `:rsa_sha512`
+- Digest: `:sha256`, `:sha384`, `:sha512`
+
+### Encryption
+
+```elixir
+# CORRECT: Generate symmetric key
+key = FnXML.Security.Algorithms.generate_key(32)  # 32 bytes = 256-bit
+
+# CORRECT: Encrypt element by ID
+{:ok, encrypted} = FnXML.Security.Encryption.encrypt(xml, "#element-id", key,
+  algorithm: :aes_256_gcm,
+  type: :element
+)
+
+# CORRECT: Decrypt with symmetric key
+{:ok, decrypted} = FnXML.Security.Encryption.decrypt(encrypted_xml, key)
+
+# CORRECT: Key transport (encrypt key with RSA)
+{:ok, encrypted} = FnXML.Security.Encryption.encrypt(xml, "#element-id", nil,
+  algorithm: :aes_256_gcm,
+  key_transport: {:rsa_oaep, recipient_public_key}
+)
+
+# CORRECT: Decrypt with private key
+{:ok, decrypted} = FnXML.Security.Encryption.decrypt(encrypted_xml,
+  private_key: recipient_private_key
+)
+
+# CORRECT: Check encryption info
+{:ok, info} = FnXML.Security.Encryption.info(encrypted_xml)
+info.algorithm            # => :aes_256_gcm
+info.type                 # => :element
+info.has_encrypted_key    # => true
+```
+
+**Encryption Types:**
+- `:element` - Encrypt entire element (including tags)
+- `:content` - Encrypt element content only
+
+**Algorithms:**
+- Encryption: `:aes_128_gcm`, `:aes_256_gcm`, `:aes_128_cbc`, `:aes_256_cbc`
+- Key Transport: `:rsa_oaep`
+
+### Security Best Practices
+
+```elixir
+# WRONG: Using SHA-1 (deprecated)
+signature_algorithm: :rsa_sha1  # Insecure!
+
+# CORRECT: Use SHA-256 or stronger
+signature_algorithm: :rsa_sha256
+
+# WRONG: Using AES-CBC without authentication
+algorithm: :aes_256_cbc  # Vulnerable to padding oracle
+
+# CORRECT: Use authenticated encryption
+algorithm: :aes_256_gcm
+
+# WRONG: Hardcoding keys
+key = <<1, 2, 3, ...>>  # Never hardcode!
+
+# CORRECT: Generate random keys
+key = FnXML.Security.Algorithms.generate_key(32)
+
+# WRONG: Ignoring verification errors
+FnXML.Security.Signature.verify(xml, key)  # Ignoring result!
+
+# CORRECT: Handle verification result
+case FnXML.Security.Signature.verify(xml, key) do
+  {:ok, :valid} -> process_trusted(xml)
+  {:error, reason} -> handle_invalid(reason)
+end
+```
+
+### Low-Level Algorithms
+
+```elixir
+# Direct digest computation
+hash = FnXML.Security.Algorithms.digest("data", :sha256)
+
+# Sign data
+{:ok, signature} = FnXML.Security.Algorithms.sign(data, :rsa_sha256, private_key)
+
+# Verify signature
+:ok = FnXML.Security.Algorithms.verify(data, signature, :rsa_sha256, public_key)
+
+# Encrypt/decrypt with AES-GCM
+{:ok, ciphertext} = FnXML.Security.Algorithms.encrypt(plaintext, :aes_256_gcm, key)
+{:ok, plaintext} = FnXML.Security.Algorithms.decrypt(ciphertext, :aes_256_gcm, key)
+
+# Key wrapping for key transport
+{:ok, wrapped} = FnXML.Security.Algorithms.encrypt_key(dek, :rsa_oaep, public_key)
+{:ok, dek} = FnXML.Security.Algorithms.decrypt_key(wrapped, :rsa_oaep, private_key)
+```

@@ -70,6 +70,12 @@ defmodule FnXML.Validate do
     {[elem], [tag_tuple | stack]}
   end
 
+  # Handle flattened 6-tuple format: {:start_element, tag, attrs, line, ls, pos}
+  defp validate_structure({:start_element, tag, _attrs, _line, _ls, _pos} = elem, stack, _on_error) do
+    tag_tuple = Element.tag(tag)
+    {[elem], [tag_tuple | stack]}
+  end
+
   defp validate_structure({:end_element, tag} = elem, [], on_error) do
     {tag_name, ns} = Element.tag(tag)
     full_tag = if ns == "", do: tag_name, else: "#{ns}:#{tag_name}"
@@ -84,6 +90,16 @@ defmodule FnXML.Validate do
     {line, col} = loc_to_position(loc)
 
     error = Error.unexpected_close(full_tag, {line, col})
+    handle_error(error, elem, [], on_error)
+  end
+
+  # Handle flattened 5-tuple format: {:end_element, tag, line, ls, pos}
+  defp validate_structure({:end_element, tag, line, ls, pos} = elem, [], on_error) do
+    {tag_name, ns} = Element.tag(tag)
+    full_tag = if ns == "", do: tag_name, else: "#{ns}:#{tag_name}"
+    {line_num, col} = loc_to_position({line, ls, pos})
+
+    error = Error.unexpected_close(full_tag, {line_num, col})
     handle_error(error, elem, [], on_error)
   end
 
@@ -116,6 +132,24 @@ defmodule FnXML.Validate do
       {line, col} = loc_to_position(loc)
 
       error = Error.tag_mismatch(expected_str, actual_str, {line, col})
+      handle_error(error, elem, [expected | rest], on_error)
+    end
+  end
+
+  # Handle flattened 5-tuple format: {:end_element, tag, line, ls, pos}
+  defp validate_structure({:end_element, tag, line, ls, pos} = elem, [expected | rest], on_error) do
+    actual = Element.tag(tag)
+
+    if actual == expected do
+      {[elem], rest}
+    else
+      {exp_name, exp_ns} = expected
+      {act_name, act_ns} = actual
+      expected_str = if exp_ns == "", do: exp_name, else: "#{exp_ns}:#{exp_name}"
+      actual_str = if act_ns == "", do: act_name, else: "#{act_ns}:#{act_name}"
+      {line_num, col} = loc_to_position({line, ls, pos})
+
+      error = Error.tag_mismatch(expected_str, actual_str, {line_num, col})
       handle_error(error, elem, [expected | rest], on_error)
     end
   end
@@ -395,22 +429,49 @@ defmodule FnXML.Validate do
     on_error = Keyword.get(opts, :on_error, :error)
 
     Stream.flat_map(stream, fn
-      {:characters, content, loc} ->
-        validate_chars_and_emit(:text, content, loc, on_error)
+      {:characters, content, loc} = event ->
+        validate_chars_and_emit_or_pass(event, :text, content, loc, on_error)
 
-      {:start_element, tag, attrs, loc} ->
-        validate_attrs_chars_and_emit(tag, attrs, loc, on_error)
+      # Handle flattened 5-tuple format: {:characters, content, line, ls, pos}
+      {:characters, content, line, ls, pos} = event ->
+        validate_chars_and_emit_or_pass(event, :text, content, {line, ls, pos}, on_error)
 
-      {:cdata, content, loc} ->
-        validate_chars_and_emit(:cdata, content, loc, on_error)
+      {:start_element, tag, attrs, loc} = event ->
+        validate_attrs_chars_and_emit_or_pass(event, tag, attrs, loc, on_error)
 
-      {:comment, content, loc} ->
-        validate_chars_and_emit(:comment, content, loc, on_error)
+      # Handle flattened 6-tuple format: {:start_element, tag, attrs, line, ls, pos}
+      {:start_element, tag, attrs, line, ls, pos} = event ->
+        validate_attrs_chars_and_emit_or_pass(event, tag, attrs, {line, ls, pos}, on_error)
 
-      {:processing_instruction, target, content, loc} ->
+      {:cdata, content, loc} = event ->
+        validate_chars_and_emit_or_pass(event, :cdata, content, loc, on_error)
+
+      # Handle flattened 5-tuple format for cdata
+      {:cdata, content, line, ls, pos} = event ->
+        validate_chars_and_emit_or_pass(event, :cdata, content, {line, ls, pos}, on_error)
+
+      {:comment, content, loc} = event ->
+        validate_chars_and_emit_or_pass(event, :comment, content, loc, on_error)
+
+      # Handle flattened 5-tuple format for comment
+      {:comment, content, line, ls, pos} = event ->
+        validate_chars_and_emit_or_pass(event, :comment, content, {line, ls, pos}, on_error)
+
+      {:processing_instruction, target, content, loc} = event ->
         case find_invalid_char(content, 0) do
           nil ->
-            [{:processing_instruction, target, content, loc}]
+            [event]
+
+          {char, offset} ->
+            handle_char_error(:proc_inst, target, content, loc, char, offset, on_error)
+        end
+
+      # Handle flattened 6-tuple format for processing_instruction
+      {:processing_instruction, target, content, line, ls, pos} = event ->
+        loc = {line, ls, pos}
+        case find_invalid_char(content, 0) do
+          nil ->
+            [event]
 
           {char, offset} ->
             handle_char_error(:proc_inst, target, content, loc, char, offset, on_error)
@@ -419,6 +480,27 @@ defmodule FnXML.Validate do
       event ->
         [event]
     end)
+  end
+
+  # Helper that passes through original event if valid, or handles error
+  defp validate_chars_and_emit_or_pass(original_event, type, content, loc, on_error) do
+    case find_invalid_char(content, 0) do
+      nil ->
+        [original_event]
+
+      {char, offset} ->
+        handle_char_error(type, nil, content, loc, char, offset, on_error)
+    end
+  end
+
+  defp validate_attrs_chars_and_emit_or_pass(original_event, tag, attrs, loc, on_error) do
+    case find_invalid_attr_char(attrs) do
+      nil ->
+        [original_event]
+
+      {attr_name, attr_val, char, offset} ->
+        handle_attr_char_error(tag, attr_name, attr_val, loc, char, offset, on_error)
+    end
   end
 
   # Find the first invalid XML character in a binary
