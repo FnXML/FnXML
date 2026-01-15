@@ -2,15 +2,47 @@ defmodule FnXML.Stream.Decoder do
   @moduledoc """
   A simple XML stream decoder, implemented using behaviours.
 
-  Event formats:
-  - `{:start_document, nil}` - Document start marker
-  - `{:end_document, nil}` - Document end marker
-  - `{:start_element, tag, attrs, loc}` - Opening tag with attributes
-  - `{:end_element, tag}` or `{:end_element, tag, loc}` - Closing tag
+  The decoder accepts both parser format (6-tuple) and normalized format (4-tuple)
+  events as input, and always passes normalized format events to callbacks.
+
+  ## Callback Event Formats
+
+  Callbacks receive events in normalized format with packed location tuples:
+
+  - `{:start_element, tag, attrs, loc}` - Opening tag (loc is `nil` or `{line, ls, pos}`)
+  - `{:end_element, tag, loc}` - Closing tag
   - `{:characters, content, loc}` - Text content
   - `{:comment, content, loc}` - Comment
   - `{:prolog, "xml", attrs, loc}` - XML prolog
   - `{:processing_instruction, name, content, loc}` - Processing instruction
+
+  ## Implementing a Decoder
+
+  Implement the behaviour callbacks to process XML events:
+
+      defmodule MyDecoder do
+        @behaviour FnXML.Stream.Decoder
+
+        @impl true
+        def handle_open({:start_element, tag, attrs, _loc}, path, acc, _opts) do
+          # Process opening tag
+          acc
+        end
+
+        @impl true
+        def handle_close(_elem, _path, acc, _opts), do: acc
+
+        @impl true
+        def handle_text({:characters, content, _loc}, _path, acc, _opts), do: acc
+
+        # ... other callbacks
+      end
+
+  ## Usage
+
+      FnXML.Parser.parse(xml)
+      |> FnXML.Stream.Decoder.decode(MyDecoder, opts)
+      |> Enum.to_list()
   """
 
   @callback handle_prolog(element :: tuple, path :: list, acc :: list, opts :: list) :: list

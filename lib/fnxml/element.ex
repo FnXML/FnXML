@@ -2,7 +2,12 @@ defmodule FnXML.Element do
   @moduledoc """
   This module provides functions for working with elements of an XML stream.
 
-  Event formats (flat location - line, line_start, byte_offset):
+  All functions support two event formats:
+
+  ## Parser Format (from `FnXML.Parser`)
+
+  Events with explicit position info (line, line_start, byte_offset):
+
   - `{:start_document, nil}` - Document start marker
   - `{:end_document, nil}` - Document end marker
   - `{:start_element, tag, attrs, line, ls, pos}` - Opening tag with attributes
@@ -15,6 +20,23 @@ defmodule FnXML.Element do
   - `{:prolog, "xml", attrs, line, ls, pos}` - XML prolog
   - `{:processing_instruction, name, content, line, ls, pos}` - Processing instruction
   - `{:error, type, msg, line, ls, pos}` - Parse error
+
+  ## Normalized Format (for programmatic generation)
+
+  Events with optional packed location tuple or nil:
+
+  - `{:start_element, tag, attrs, loc}` - Opening tag (loc is `nil` or `{line, ls, pos}`)
+  - `{:end_element, tag, loc}` - Closing tag
+  - `{:characters, content, loc}` - Text content
+  - `{:space, content, loc}` - Whitespace content
+  - `{:comment, content, loc}` - Comment
+  - `{:cdata, content, loc}` - CDATA section
+  - `{:dtd, content, loc}` - DOCTYPE declaration
+  - `{:prolog, "xml", attrs, loc}` - XML prolog
+  - `{:processing_instruction, name, content, loc}` - Processing instruction
+
+  The normalized format is useful when generating XML events programmatically.
+  When loc is `nil`, position functions return `{0, 0}`.
   """
 
   def id_list(),
@@ -62,6 +84,8 @@ defmodule FnXML.Element do
   def tag({:start_element, tag, _attrs, _loc}), do: tag(tag)
   # 3-tuple format (normalized)
   def tag({:end_element, tag, _loc}), do: tag(tag)
+  # 2-tuple format (no location)
+  def tag({:end_element, tag}), do: tag(tag)
 
   @doc """
   Given a tag name tuple returned from the tag function,
@@ -98,6 +122,8 @@ defmodule FnXML.Element do
   def tag_string({:start_element, tag, _attrs, _loc}), do: tag
   # 3-tuple format (normalized)
   def tag_string({:end_element, tag, _loc}), do: tag
+  # 2-tuple format (no location)
+  def tag_string({:end_element, tag}), do: tag
 
   @doc """
   Given an open element, return its list of attributes,
@@ -177,6 +203,8 @@ defmodule FnXML.Element do
   # 3-tuple format (normalized)
   def position({:end_element, _tag, nil}), do: {0, 0}
   def position({:end_element, _tag, {line, ls, pos}}), do: {line, pos - ls}
+  # 2-tuple format (no location)
+  def position({:end_element, _tag}), do: {0, 0}
   def position({:characters, _content, nil}), do: {0, 0}
   def position({:characters, _content, {line, ls, pos}}), do: {line, pos - ls}
   def position({:space, _content, nil}), do: {0, 0}
@@ -215,6 +243,8 @@ defmodule FnXML.Element do
   def loc({:processing_instruction, _name, _content, loc}), do: loc
   # 3-tuple format (normalized)
   def loc({:end_element, _tag, loc}), do: loc
+  # 2-tuple format (no location)
+  def loc({:end_element, _tag}), do: nil
   def loc({:characters, _content, loc}), do: loc
   def loc({:space, _content, loc}), do: loc
   def loc({:comment, _content, loc}), do: loc

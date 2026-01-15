@@ -8,12 +8,14 @@ defmodule FnXMLTest do
       events = FnXML.parse("<root/>")
       assert {:start_document, nil} in events
       assert {:end_document, nil} in events
-      assert Enum.any?(events, &match?({:start_element, "root", [], _}, &1))
+      # Parser outputs 6-tuple format: {:start_element, tag, attrs, line, ls, pos}
+      assert Enum.any?(events, &match?({:start_element, "root", [], _, _, _}, &1))
     end
 
     test "parses XML with text content" do
       events = FnXML.parse("<root>Hello</root>")
-      assert Enum.any?(events, &match?({:characters, "Hello", _}, &1))
+      # Parser outputs 5-tuple format: {:characters, content, line, ls, pos}
+      assert Enum.any?(events, &match?({:characters, "Hello", _, _, _}, &1))
     end
   end
 

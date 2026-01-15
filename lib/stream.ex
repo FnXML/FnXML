@@ -16,7 +16,11 @@ defmodule FnXML.Stream do
 
   ## Event Formats
 
-  The parser and stream functions operate on these event types:
+  The stream functions support two event formats:
+
+  ### Parser Format (from `FnXML.Parser`)
+
+  Events with explicit position info (line, line_start, byte_offset):
 
   | Event | Description |
   |-------|-------------|
@@ -29,6 +33,23 @@ defmodule FnXML.Stream do
   | `{:comment, content, line, ls, pos}` | Comment |
   | `{:prolog, "xml", attrs, line, ls, pos}` | XML prolog |
   | `{:processing_instruction, name, content, line, ls, pos}` | Processing instruction |
+
+  ### Normalized Format (for programmatic generation)
+
+  Events with optional packed location tuple or nil:
+
+  | Event | Description |
+  |-------|-------------|
+  | `{:start_element, tag, attrs, loc}` | Opening tag (loc is `nil` or `{line, ls, pos}`) |
+  | `{:end_element, tag, loc}` | Closing tag |
+  | `{:characters, content, loc}` | Text content |
+  | `{:space, content, loc}` | Whitespace |
+  | `{:comment, content, loc}` | Comment |
+  | `{:prolog, "xml", attrs, loc}` | XML prolog |
+  | `{:processing_instruction, name, content, loc}` | Processing instruction |
+
+  The normalized format is useful when generating XML events programmatically
+  (e.g., from data structures) where position information is not available.
 
   ## Use Cases
 
@@ -214,6 +235,11 @@ defmodule FnXML.Stream do
     {length(path) - 1, "</#{tag}>"}
   end
 
+  # 2-tuple format (no location)
+  defp format_element({:end_element, tag}, path, _acc) do
+    {length(path) - 1, "</#{tag}>"}
+  end
+
   defp format_element({:characters, content, _loc}, path, _acc) do
     if Regex.match?(~r/[<>]/, content) do
       {length(path), "<![CDATA[#{content}]]>"}
@@ -310,6 +336,26 @@ defmodule FnXML.Stream do
   end
 
   defp process_item({:end_element, tag, _loc} = element, {[head | new_stack] = stack, acc, fun}) do
+    tag_tuple = Element.tag(tag)
+
+    cond do
+      tag_tuple == head ->
+        fun.(element, stack, acc) |> next(new_stack, fun)
+
+      tag_tuple != head ->
+        error(
+          element,
+          "mis-matched close tag #{inspect(tag_tuple)}, expecting: #{Element.tag_name(head)}"
+        )
+    end
+  end
+
+  # 2-element end_element (no location): {:end_element, tag}
+  defp process_item({:end_element, tag} = element, {[], _, _}) do
+    error(element, "unexpected close tag #{tag}, missing open tag")
+  end
+
+  defp process_item({:end_element, tag} = element, {[head | new_stack] = stack, acc, fun}) do
     tag_tuple = Element.tag(tag)
 
     cond do
