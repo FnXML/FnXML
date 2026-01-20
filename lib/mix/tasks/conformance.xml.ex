@@ -455,7 +455,8 @@ defmodule Mix.Tasks.Conformance.Xml do
           # Must be BEFORE entity resolution so &lt; is still an entity ref
           |> FnXML.Validate.attribute_values()
           # Use :keep for unknown entities since we don't parse external DTDs
-          |> FnXML.Entities.resolve(on_unknown: :keep, entities: entity_values)
+          # Pass edition for re-parsing entity values that contain markup
+          |> FnXML.Entities.resolve(on_unknown: :keep, entities: entity_values, edition: edition)
           # Validate namespace constraints (NSC: Prefix Declared, etc.)
           # Skip if NAMESPACE="no" in test definition
           |> maybe_validate_namespaces(test.namespace)
