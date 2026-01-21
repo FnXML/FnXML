@@ -27,7 +27,9 @@ defmodule FnXML.StAX do
   can be advanced through the document, with accessor functions to
   query the current event.
 
-      reader = FnXML.StAX.Reader.new("<root><child>text</child></root>")
+      # Pipeline style (recommended)
+      reader = FnXML.parse_stream("<root><child>text</child></root>")
+               |> FnXML.StAX.reader()
 
       reader = FnXML.StAX.Reader.next(reader)  # Advance to first event
       FnXML.StAX.Reader.event_type(reader)     # => :start_element
@@ -35,6 +37,9 @@ defmodule FnXML.StAX do
 
       reader = FnXML.StAX.Reader.next(reader)
       FnXML.StAX.Reader.local_name(reader)     # => "child"
+
+      # Quick create (convenience)
+      reader = FnXML.StAX.create_reader("<root/>")
 
   ### Writer API
 
@@ -150,14 +155,49 @@ defmodule FnXML.StAX do
   def entity_declaration, do: @entity_declaration
 
   @doc """
+  Create a StAX reader from an event stream.
+
+  This is the primary way to create a StAX reader with FnXML's pipeline style,
+  taking a pre-parsed event stream as input.
+
+  ## Options
+
+  - `:namespaces` - Enable namespace resolution (default: false)
+
+  ## Examples
+
+      # Pipeline style (recommended)
+      reader = FnXML.parse_stream("<root><child>text</child></root>")
+               |> FnXML.StAX.reader()
+
+      reader = FnXML.StAX.Reader.next(reader)
+      FnXML.StAX.Reader.local_name(reader)  # => "root"
+
+      # With validation
+      reader = FnXML.parse_stream(xml)
+               |> FnXML.Validate.well_formed()
+               |> FnXML.StAX.reader()
+  """
+  @spec reader(Enumerable.t(), keyword()) :: FnXML.StAX.Reader.t()
+  def reader(stream, opts \\ []) do
+    FnXML.StAX.Reader.new(stream, opts)
+  end
+
+  @doc """
   Create a new StAX reader for the given XML source.
+
+  This is a convenience function that parses and creates a reader in one step.
+  For pipeline style, use `FnXML.parse_stream/1` piped to `reader/1,2`.
 
   ## Examples
 
       reader = FnXML.StAX.create_reader("<root/>")
   """
-  @spec create_reader(String.t() | Enumerable.t(), keyword()) :: FnXML.StAX.Reader.t()
-  defdelegate create_reader(source, opts \\ []), to: FnXML.StAX.Reader, as: :new
+  @spec create_reader(String.t(), keyword()) :: FnXML.StAX.Reader.t()
+  def create_reader(xml, opts \\ []) when is_binary(xml) do
+    FnXML.Parser.parse(xml)
+    |> reader(opts)
+  end
 
   @doc """
   Create a new StAX writer.
