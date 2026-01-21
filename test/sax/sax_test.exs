@@ -213,10 +213,9 @@ defmodule FnXML.SAXTest do
     end
   end
 
-  describe "parse/4 with stream input" do
+  describe "run/4 with stream input" do
     test "accepts event stream" do
-      stream = FnXML.Parser.parse("<root/>")
-      {:ok, state} = SAX.parse(stream, CollectHandler, %{})
+      {:ok, state} = FnXML.parse_stream("<root/>") |> SAX.run(CollectHandler, %{})
       assert state.started == true
     end
   end

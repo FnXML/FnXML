@@ -74,18 +74,18 @@ defmodule FnXML.DOMTest do
   end
 
   # ==========================================================================
-  # DOM.from_stream/2
+  # DOM.build/2
   # ==========================================================================
 
-  describe "from_stream/2" do
+  describe "build/2" do
     test "builds DOM from parser stream" do
-      doc = FnXML.Parser.parse("<root>text</root>") |> DOM.from_stream()
+      doc = FnXML.parse_stream("<root>text</root>") |> DOM.build()
       assert doc.root.tag == "root"
       assert doc.root.children == ["text"]
     end
 
     test "builds DOM with nested elements from stream" do
-      doc = FnXML.Parser.parse("<a><b><c/></b></a>") |> DOM.from_stream()
+      doc = FnXML.parse_stream("<a><b><c/></b></a>") |> DOM.build()
       assert doc.root.tag == "a"
       [b] = doc.root.children
       assert b.tag == "b"
