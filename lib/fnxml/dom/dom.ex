@@ -18,12 +18,19 @@ defmodule FnXML.DOM do
 
   ## Usage
 
-      # Parse XML to DOM
-      doc = FnXML.DOM.parse("<root><child id='1'>text</child></root>")
+      # Build DOM from parser stream (recommended)
+      doc = FnXML.parse_stream("<root><child id='1'>text</child></root>")
+            |> FnXML.DOM.build()
       doc.root.tag  # => "root"
 
-      # Access elements
-      FnXML.DOM.Document.get_element_by_id(doc, "1")
+      # With validation/transformation pipeline
+      doc = FnXML.parse_stream(xml)
+            |> FnXML.Validate.well_formed()
+            |> FnXML.Namespaces.resolve()
+            |> FnXML.DOM.build()
+
+      # Quick parse (convenience, skips pipeline)
+      doc = FnXML.DOM.parse("<root><child id='1'>text</child></root>")
 
       # Serialize back to XML
       FnXML.DOM.to_string(doc)  # => "<root><child id=\"1\">text</child></root>"
@@ -118,15 +125,35 @@ defmodule FnXML.DOM do
   @doc """
   Build DOM from an FnXML event stream.
 
+  This is the primary way to create a DOM from parsed XML, enabling
+  stream transformations before building the tree.
+
+  ## Options
+
+  - `:include_comments` - Include comment nodes (default: false)
+  - `:include_prolog` - Parse XML declaration (default: true)
+
   ## Examples
 
-      iex> FnXML.Parser.parse("<root>text</root>")
-      ...> |> FnXML.DOM.from_stream()
+      iex> FnXML.parse_stream("<root>text</root>")
+      ...> |> FnXML.DOM.build()
       ...> |> then(& &1.root.tag)
       "root"
+
+      # With validation
+      FnXML.parse_stream(xml)
+      |> FnXML.Validate.well_formed()
+      |> FnXML.DOM.build()
+
+      # With namespace resolution
+      FnXML.parse_stream(xml)
+      |> FnXML.Namespaces.resolve()
+      |> FnXML.DOM.build()
   """
-  @spec from_stream(Enumerable.t(), keyword()) :: Document.t()
-  defdelegate from_stream(stream, opts \\ []), to: Builder
+  @spec build(Enumerable.t(), keyword()) :: Document.t()
+  def build(stream, opts \\ []) do
+    Builder.from_stream(stream, opts)
+  end
 
   @doc """
   Serialize DOM to XML string.

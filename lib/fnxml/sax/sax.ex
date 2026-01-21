@@ -44,9 +44,13 @@ defmodule FnXML.SAX do
         end
       end
 
-      {:ok, result} = FnXML.SAX.parse("<root><child>text</child></root>", MyHandler, %{})
+      # Pipeline style (recommended)
+      {:ok, result} = FnXML.parse_stream("<root><child>text</child></root>")
+                      |> FnXML.SAX.run(MyHandler, %{})
       # result.elements => ["child", "root"]
-      # result.text => "text"
+
+      # Quick parse (convenience)
+      {:ok, result} = FnXML.SAX.parse("<root><child>text</child></root>", MyHandler, %{})
 
   ## Using the Default Handler
 
@@ -187,7 +191,10 @@ defmodule FnXML.SAX do
   ]
 
   @doc """
-  Parse XML with the given handler module.
+  Run SAX handler on an event stream.
+
+  This is the primary way to use SAX with FnXML's pipeline style,
+  taking a pre-parsed event stream as input.
 
   ## Options
 
@@ -195,23 +202,23 @@ defmodule FnXML.SAX do
 
   ## Examples
 
-      {:ok, state} = FnXML.SAX.parse("<root/>", MyHandler, %{})
+      # Pipeline style (recommended)
+      {:ok, state} = FnXML.parse_stream("<root><item/></root>")
+                     |> FnXML.SAX.run(MyHandler, %{})
 
-      {:ok, state} = FnXML.SAX.parse(xml_stream, MyHandler, initial_state)
+      # With validation
+      {:ok, state} = FnXML.parse_stream(xml)
+                     |> FnXML.Validate.well_formed()
+                     |> FnXML.SAX.run(MyHandler, %{count: 0})
 
-      {:error, reason} = FnXML.SAX.parse("<invalid", MyHandler, %{})
+      # Without namespace resolution
+      {:ok, state} = FnXML.parse_stream(xml)
+                     |> FnXML.SAX.run(MyHandler, %{}, namespaces: false)
   """
-  @spec parse(String.t() | Enumerable.t(), module(), term(), keyword()) ::
+  @spec run(Enumerable.t(), module(), term(), keyword()) ::
           {:ok, term()} | {:error, term()}
-  def parse(xml, handler, initial_state, opts \\ []) do
+  def run(stream, handler, initial_state, opts \\ []) do
     resolve_namespaces = Keyword.get(opts, :namespaces, true)
-
-    stream =
-      if is_binary(xml) do
-        FnXML.Parser.parse(xml)
-      else
-        xml
-      end
 
     stream =
       if resolve_namespaces do
@@ -228,6 +235,29 @@ defmodule FnXML.SAX do
       {:error, _} = error ->
         error
     end
+  end
+
+  @doc """
+  Parse XML with the given handler module.
+
+  This is a convenience function that parses and runs in one step.
+  For pipeline style, use `FnXML.parse_stream/1` piped to `run/3,4`.
+
+  ## Options
+
+  - `:namespaces` - Enable namespace resolution (default: true)
+
+  ## Examples
+
+      {:ok, state} = FnXML.SAX.parse("<root/>", MyHandler, %{})
+
+      {:error, reason} = FnXML.SAX.parse("<invalid", MyHandler, %{})
+  """
+  @spec parse(String.t(), module(), term(), keyword()) ::
+          {:ok, term()} | {:error, term()}
+  def parse(xml, handler, initial_state, opts \\ []) when is_binary(xml) do
+    FnXML.Parser.parse(xml)
+    |> run(handler, initial_state, opts)
   end
 
   defp process_events(stream, handler, initial_state, resolve_namespaces) do
@@ -271,41 +301,27 @@ defmodule FnXML.SAX do
   end
 
   # Without namespace resolution - element names are strings
-  # 6-tuple from parser
-  defp dispatch_event({:start_element, tag, attrs, _line, _ls, _pos}, handler, state, false)
-       when is_binary(tag) do
-    {_prefix, local} = parse_qname(tag)
-    handler.start_element(nil, local, tag, attrs, state)
-  end
-
-  # 4-tuple normalized
+  # 4-tuple: {:start_element, tag, attrs, loc}
   defp dispatch_event({:start_element, tag, attrs, _loc}, handler, state, false)
        when is_binary(tag) do
     {_prefix, local} = parse_qname(tag)
     handler.start_element(nil, local, tag, attrs, state)
   end
 
-  # 5-tuple from parser
-  defp dispatch_event({:end_element, tag, _line, _ls, _pos}, handler, state, false)
-       when is_binary(tag) do
-    {_prefix, local} = parse_qname(tag)
-    handler.end_element(nil, local, tag, state)
-  end
-
-  # 3-tuple normalized
+  # 3-tuple: {:end_element, tag, loc}
   defp dispatch_event({:end_element, tag, _loc}, handler, state, false) when is_binary(tag) do
     {_prefix, local} = parse_qname(tag)
     handler.end_element(nil, local, tag, state)
   end
 
-  # 2-tuple legacy
+  # 2-tuple legacy (no position): {:end_element, tag}
   defp dispatch_event({:end_element, tag}, handler, state, false) when is_binary(tag) do
     {_prefix, local} = parse_qname(tag)
     handler.end_element(nil, local, tag, state)
   end
 
-  # Text content - 5-tuple from parser
-  defp dispatch_event({:characters, content, _line, _ls, _pos}, handler, state, _ns) do
+  # Text content - 3-tuple: {:characters, content, loc}
+  defp dispatch_event({:characters, content, _loc}, handler, state, _ns) do
     handler.characters(content, state)
   end
 
@@ -376,21 +392,12 @@ defmodule FnXML.SAX do
   # Skip document markers and other events
   defp dispatch_event({:start_document, _}, _handler, state, _ns), do: {:ok, state}
   defp dispatch_event({:end_document, _}, _handler, state, _ns), do: {:ok, state}
-  # 6-tuple from parser
-  defp dispatch_event({:prolog, _, _, _, _, _}, _handler, state, _ns), do: {:ok, state}
-  # 4-tuple normalized
+  # 4-tuple: {:prolog, name, attrs, loc}
   defp dispatch_event({:prolog, _, _, _}, _handler, state, _ns), do: {:ok, state}
-  # 5-tuple from parser
-  defp dispatch_event({:dtd, _, _, _, _}, _handler, state, _ns), do: {:ok, state}
-  # 3-tuple normalized
+  # 3-tuple: {:dtd, content, loc}
   defp dispatch_event({:dtd, _, _}, _handler, state, _ns), do: {:ok, state}
 
-  # CDATA - 5-tuple from parser
-  defp dispatch_event({:cdata, content, line, ls, pos}, handler, state, ns) do
-    dispatch_event({:characters, content, line, ls, pos}, handler, state, ns)
-  end
-
-  # CDATA - 3-tuple normalized
+  # CDATA - 3-tuple: {:cdata, content, loc}
   defp dispatch_event({:cdata, content, loc}, handler, state, ns) do
     dispatch_event({:characters, content, loc}, handler, state, ns)
   end

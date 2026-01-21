@@ -7,11 +7,18 @@ defmodule FnXML.DOM.Builder do
 
   ## Examples
 
-      # From XML string
-      doc = FnXML.DOM.Builder.parse("<root><child/></root>")
+      # Pipeline style (recommended) - use FnXML.DOM.build/1
+      doc = FnXML.parse_stream("<root><child/></root>")
+            |> FnXML.DOM.build()
 
-      # From event stream
-      doc = FnXML.Parser.parse("<root/>") |> FnXML.DOM.Builder.from_stream()
+      # Quick parse (convenience)
+      doc = FnXML.DOM.parse("<root><child/></root>")
+
+  ## Internal
+
+  This module provides the implementation for `FnXML.DOM.build/1,2`
+  and `FnXML.DOM.parse/1,2`. Use those functions instead of calling
+  this module directly.
   """
 
   alias FnXML.DOM.{Document, Element}
