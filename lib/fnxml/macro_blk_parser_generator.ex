@@ -338,11 +338,20 @@ defmodule FnXML.MacroBlkParserGenerator do
     end
   end
 
+  # Map event types to their parameter count (data fields)
+  # Single data parameter events use new_event/6
+  @single_param_events [:end_element, :characters, :space, :comment, :cdata, :dtd]
+
+  # Two data parameter events use new_event/7
+  @double_param_events [:start_element, :prolog, :processing_instruction, :error]
+
   # Generate new_event/6 clauses (event_type, data, line, ls, abs_pos)
   defp generate_new_event_6(disabled, positions) do
-    # Generate drop clauses for disabled event types
+    # Only generate drop clauses for disabled single-param events
+    disabled_single = Enum.filter(disabled, &(&1 in @single_param_events))
+
     drop_clauses =
-      for event_type <- disabled do
+      for event_type <- disabled_single do
         quote do
           defp new_event(events, unquote(event_type), _data, _line, _ls, _abs_pos) do
             events
@@ -350,29 +359,36 @@ defmodule FnXML.MacroBlkParserGenerator do
         end
       end
 
-    # Generate default clause based on position mode
+    # Determine if we need a default clause for new_event/6
+    # Only generate if there are enabled single-param events
+    enabled_single = @single_param_events -- disabled
+
     default_clause =
-      case positions do
-        :full ->
-          quote do
-            defp new_event(events, event_type, data, line, ls, abs_pos) do
-              [{event_type, data, line, ls, abs_pos} | events]
+      if enabled_single != [] do
+        case positions do
+          :full ->
+            quote do
+              defp new_event(events, event_type, data, line, ls, abs_pos) do
+                [{event_type, data, line, ls, abs_pos} | events]
+              end
             end
-          end
 
-        :line_only ->
-          quote do
-            defp new_event(events, event_type, data, line, _ls, _abs_pos) do
-              [{event_type, data, line} | events]
+          :line_only ->
+            quote do
+              defp new_event(events, event_type, data, line, _ls, _abs_pos) do
+                [{event_type, data, line} | events]
+              end
             end
-          end
 
-        :none ->
-          quote do
-            defp new_event(events, event_type, data, _line, _ls, _abs_pos) do
-              [{event_type, data} | events]
+          :none ->
+            quote do
+              defp new_event(events, event_type, data, _line, _ls, _abs_pos) do
+                [{event_type, data} | events]
+              end
             end
-          end
+        end
+      else
+        []
       end
 
     [drop_clauses, default_clause]
@@ -380,9 +396,11 @@ defmodule FnXML.MacroBlkParserGenerator do
 
   # Generate new_event/7 clauses (event_type, data1, data2, line, ls, abs_pos)
   defp generate_new_event_7(disabled, positions) do
-    # Generate drop clauses for disabled event types
+    # Only generate drop clauses for disabled double-param events
+    disabled_double = Enum.filter(disabled, &(&1 in @double_param_events))
+
     drop_clauses =
-      for event_type <- disabled do
+      for event_type <- disabled_double do
         quote do
           defp new_event(events, unquote(event_type), _data1, _data2, _line, _ls, _abs_pos) do
             events
@@ -390,29 +408,36 @@ defmodule FnXML.MacroBlkParserGenerator do
         end
       end
 
-    # Generate default clause based on position mode
+    # Determine if we need a default clause for new_event/7
+    # Only generate if there are enabled double-param events
+    enabled_double = @double_param_events -- disabled
+
     default_clause =
-      case positions do
-        :full ->
-          quote do
-            defp new_event(events, event_type, data1, data2, line, ls, abs_pos) do
-              [{event_type, data1, data2, line, ls, abs_pos} | events]
+      if enabled_double != [] do
+        case positions do
+          :full ->
+            quote do
+              defp new_event(events, event_type, data1, data2, line, ls, abs_pos) do
+                [{event_type, data1, data2, line, ls, abs_pos} | events]
+              end
             end
-          end
 
-        :line_only ->
-          quote do
-            defp new_event(events, event_type, data1, data2, line, _ls, _abs_pos) do
-              [{event_type, data1, data2, line} | events]
+          :line_only ->
+            quote do
+              defp new_event(events, event_type, data1, data2, line, _ls, _abs_pos) do
+                [{event_type, data1, data2, line} | events]
+              end
             end
-          end
 
-        :none ->
-          quote do
-            defp new_event(events, event_type, data1, data2, _line, _ls, _abs_pos) do
-              [{event_type, data1, data2} | events]
+          :none ->
+            quote do
+              defp new_event(events, event_type, data1, data2, _line, _ls, _abs_pos) do
+                [{event_type, data1, data2} | events]
+              end
             end
-          end
+        end
+      else
+        []
       end
 
     [drop_clauses, default_clause]
