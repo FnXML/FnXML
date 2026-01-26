@@ -284,7 +284,19 @@ defmodule FnXML.SAX do
 
   # Dispatch events to handler callbacks
 
-  # With namespace resolution - element names are {uri, local}
+  # With namespace resolution - start_element with position info (6-tuple from namespace resolver)
+  defp dispatch_event({:start_element, {uri, local}, attrs, _line, _ls, _pos}, handler, state, true) do
+    qname = if uri, do: "#{local}", else: local
+    handler.start_element(uri, local, qname, attrs, state)
+  end
+
+  # With namespace resolution - end_element with position info (5-tuple from namespace resolver)
+  defp dispatch_event({:end_element, {uri, local}, _line, _ls, _pos}, handler, state, true) do
+    qname = if uri, do: "#{local}", else: local
+    handler.end_element(uri, local, qname, state)
+  end
+
+  # With namespace resolution - element names are {uri, local} (legacy 2-tuple)
   defp dispatch_event({:end_element, {uri, local}}, handler, state, true) do
     qname = if uri, do: "#{local}", else: local
     handler.end_element(uri, local, qname, state)

@@ -94,17 +94,17 @@ defmodule FnXMLTest do
   describe "filter_whitespace/1" do
     test "removes whitespace-only character events" do
       events = [
-        {:start_element, "root", [], {1, 0, 1}},
-        {:characters, "   \n  ", {1, 0, 6}},
-        {:characters, "real text", {1, 0, 12}},
-        {:end_element, "root", {1, 0, 21}}
+        {:start_element, "root", [], 1, 0, 1},
+        {:characters, "   \n  ", 1, 0, 6},
+        {:characters, "real text", 1, 0, 12},
+        {:end_element, "root", 1, 0, 21}
       ]
 
       result = events |> FnXML.filter_whitespace() |> Enum.to_list()
 
       assert length(result) == 3
-      refute Enum.any?(result, &match?({:characters, "   \n  ", _}, &1))
-      assert Enum.any?(result, &match?({:characters, "real text", _}, &1))
+      refute Enum.any?(result, &match?({:characters, "   \n  ", _, _, _}, &1))
+      assert Enum.any?(result, &match?({:characters, "real text", _, _, _}, &1))
     end
 
     test "keeps non-character events" do

@@ -609,6 +609,11 @@ defmodule FnXML.Validate do
     [{:error, msg, loc}]
   end
 
+  defp handle_char_error(_type, _extra, _content, loc, char, offset, :emit) do
+    msg = "Invalid XML character #{format_codepoint(char)} at byte offset #{offset}"
+    [{:error, msg, loc}]
+  end
+
   defp handle_char_error(_type, _extra, _content, loc, char, offset, :raise) do
     {line, _, _} = loc
     raise "Invalid XML character #{format_codepoint(char)} at byte offset #{offset}, line #{line}"
@@ -657,6 +662,13 @@ defmodule FnXML.Validate do
   end
 
   defp handle_attr_char_error(_tag, _attrs, loc, attr_name, char, offset, :error) do
+    msg =
+      "Invalid XML character #{format_codepoint(char)} in attribute '#{attr_name}' at byte offset #{offset}"
+
+    [{:error, msg, loc}]
+  end
+
+  defp handle_attr_char_error(_tag, _attrs, loc, attr_name, char, offset, :emit) do
     msg =
       "Invalid XML character #{format_codepoint(char)} in attribute '#{attr_name}' at byte offset #{offset}"
 
@@ -771,12 +783,21 @@ defmodule FnXML.Validate do
     [{:error, msg, loc}]
   end
 
+  defp handle_comment_error(loc, offset, :emit) do
+    msg = "'--' not allowed in comments (at byte offset #{offset})"
+    [{:error, msg, loc}]
+  end
+
   defp handle_comment_error(loc, offset, :raise) do
     {line, _, _} = loc
     raise "'--' not allowed in comments (at byte offset #{offset}), line #{line}"
   end
 
   defp handle_comment_dash_end_error(loc, :error) do
+    [{:error, "Comment cannot end with '-' (would form '--->')", loc}]
+  end
+
+  defp handle_comment_dash_end_error(loc, :emit) do
     [{:error, "Comment cannot end with '-' (would form '--->')", loc}]
   end
 
@@ -840,6 +861,10 @@ defmodule FnXML.Validate do
   end
 
   defp handle_pi_error(loc, msg, :error) do
+    [{:error, msg, loc}]
+  end
+
+  defp handle_pi_error(loc, msg, :emit) do
     [{:error, msg, loc}]
   end
 
@@ -1023,6 +1048,10 @@ defmodule FnXML.Validate do
   defp extract_tag_name({name, _ns}), do: name
 
   defp handle_root_boundary_error(msg, loc, state, :error) do
+    {[{:error, msg, loc}], state}
+  end
+
+  defp handle_root_boundary_error(msg, loc, state, :emit) do
     {[{:error, msg, loc}], state}
   end
 
@@ -1392,6 +1421,10 @@ defmodule FnXML.Validate do
     [{:error, msg, loc}]
   end
 
+  defp handle_xml_decl_error(msg, loc, :emit) do
+    [{:error, msg, loc}]
+  end
+
   defp handle_xml_decl_error(msg, loc, :raise) do
     {line, _, _} = loc
     raise "#{msg} at line #{line}"
@@ -1599,6 +1632,10 @@ defmodule FnXML.Validate do
   end
 
   defp handle_char_ref_error(msg, loc, :error) do
+    [{:error, msg, loc}]
+  end
+
+  defp handle_char_ref_error(msg, loc, :emit) do
     [{:error, msg, loc}]
   end
 

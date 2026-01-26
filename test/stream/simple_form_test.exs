@@ -131,13 +131,13 @@ defmodule FnXML.Stream.SimpleFormTest do
   describe "to_stream/1" do
     test "converts SimpleForm to stream" do
       events = {"root", [], []} |> SimpleForm.to_stream() |> Enum.to_list()
-      assert {:start_element, "root", [], nil} in events
-      assert {:end_element, "root"} in events
+      assert {:start_element, "root", [], 1, 0, 0} in events
+      assert {:end_element, "root", 1, 0, 0} in events
     end
 
     test "includes text content" do
       events = {"root", [], ["text"]} |> SimpleForm.to_stream() |> Enum.to_list()
-      assert {:characters, "text", nil} in events
+      assert {:characters, "text", 1, 0, 0} in events
     end
 
     test "handles nested elements" do
@@ -145,8 +145,8 @@ defmodule FnXML.Stream.SimpleFormTest do
 
       tags =
         events
-        |> Enum.filter(&match?({:start_element, _, _, _}, &1))
-        |> Enum.map(fn {:start_element, tag, _, _} -> tag end)
+        |> Enum.filter(&match?({:start_element, _, _, _, _, _}, &1))
+        |> Enum.map(fn {:start_element, tag, _, _, _, _} -> tag end)
 
       assert "a" in tags
       assert "b" in tags
@@ -154,7 +154,7 @@ defmodule FnXML.Stream.SimpleFormTest do
 
     test "handles comments" do
       events = {"root", [], [{:comment, "text"}]} |> SimpleForm.to_stream() |> Enum.to_list()
-      assert {:comment, "text", nil} in events
+      assert {:comment, "text", 1, 0, 0} in events
     end
   end
 
@@ -164,8 +164,8 @@ defmodule FnXML.Stream.SimpleFormTest do
 
       tags =
         events
-        |> Enum.filter(&match?({:start_element, _, _, _}, &1))
-        |> Enum.map(fn {:start_element, tag, _, _} -> tag end)
+        |> Enum.filter(&match?({:start_element, _, _, _, _, _}, &1))
+        |> Enum.map(fn {:start_element, tag, _, _, _, _} -> tag end)
 
       assert "a" in tags
       assert "b" in tags
