@@ -419,7 +419,7 @@ defmodule FnXML.Stream.SimpleForm do
 
   # Emit element - open tag, then queue content and close
   defp emit_next([{tag, attrs, content} | rest]) do
-    open = {:start_element, tag, attrs, nil}
+    open = {:start_element, tag, attrs, 1, 0, 0}
     # Queue: content items, then close tag, then rest
     new_queue = content ++ [{:close_tag, tag}] ++ rest
     {[open], new_queue}
@@ -427,17 +427,17 @@ defmodule FnXML.Stream.SimpleForm do
 
   # Emit close tag marker
   defp emit_next([{:close_tag, tag} | rest]) do
-    {[{:end_element, tag}], rest}
+    {[{:end_element, tag, 1, 0, 0}], rest}
   end
 
   # Emit text content
   defp emit_next([text | rest]) when is_binary(text) do
-    {[{:characters, text, nil}], rest}
+    {[{:characters, text, 1, 0, 0}], rest}
   end
 
   # Emit comment
   defp emit_next([{:comment, content} | rest]) do
-    {[{:comment, content, nil}], rest}
+    {[{:comment, content, 1, 0, 0}], rest}
   end
 
   # Skip nil values
@@ -455,7 +455,7 @@ defmodule FnXML.Stream.SimpleForm do
       iex> [{"a", [], []}, {"b", [], []}]
       ...> |> FnXML.Stream.SimpleForm.list_to_stream()
       ...> |> Enum.to_list()
-      [{:start_element, "a", [], nil}, {:end_element, "a"}, {:start_element, "b", [], nil}, {:end_element, "b"}]
+      [{:start_element, "a", [], 1, 0, 0}, {:end_element, "a", 1, 0, 0}, {:start_element, "b", [], 1, 0, 0}, {:end_element, "b", 1, 0, 0}]
 
   """
   def list_to_stream(simple_forms) when is_list(simple_forms) do

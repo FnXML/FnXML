@@ -2,23 +2,31 @@ defmodule FnXML.Parser do
   @moduledoc """
   Streaming XML parser for Elixir.
 
-  This module provides the main parsing API for FnXML. It supports two parser
+  This module provides the main parsing API for FnXML. It supports multiple parser
   implementations:
 
-  - `:default` - Full-featured parser with position tracking (`FnXML.ExBlkParser`)
+  - `:default` - Full-featured macro-based parser (`FnXML.MacroBlkParser`, Edition 5)
   - `:fast` - Optimized parser without position tracking (`FnXML.FastExBlkParser`)
+  - `:legacy` - Legacy runtime parser (`FnXML.ExBlkParser`)
 
   ## Options
 
-  - `:parser` - Parser selection: `:default` or `:fast` (default: `:default`)
+  - `:parser` - Parser selection: `:default`, `:fast`, or `:legacy` (default: `:default`)
+  - `:edition` - XML 1.0 edition (4 or 5, default: 5) - only applies to `:default` parser
 
   ## Usage
 
-      # Default parser (with position tracking)
+      # Default parser (MacroBlkParser Edition 5)
       events = FnXML.Parser.stream("<root/>") |> Enum.to_list()
 
       # Fast parser (no position tracking, faster)
       events = FnXML.Parser.stream(xml, parser: :fast) |> Enum.to_list()
+
+      # Legacy parser (ExBlkParser)
+      events = FnXML.Parser.stream(xml, parser: :legacy) |> Enum.to_list()
+
+      # Edition 4 parser
+      events = FnXML.Parser.stream(xml, edition: 4) |> Enum.to_list()
 
       # Parse to list directly
       events = FnXML.Parser.parse("<root><child/></root>")
@@ -92,7 +100,12 @@ defmodule FnXML.Parser do
   defp select_parser_stream(source, opts) do
     case Keyword.get(opts, :parser, :default) do
       :fast -> FnXML.FastExBlkParser.stream(source)
-      _ -> FnXML.ExBlkParser.stream(source)
+      :legacy -> FnXML.ExBlkParser.stream(source)
+      _ ->
+        # Use MacroBlkParser Edition 5 as default
+        edition = Keyword.get(opts, :edition, 5)
+        parser = FnXML.MacroBlkParser.parser(edition)
+        parser.stream(source)
     end
   end
 
@@ -112,7 +125,8 @@ defmodule FnXML.Parser do
 
   ## Options
 
-  - `:parser` - Parser to use: `:default` or `:fast` (default: `:default`)
+  - `:parser` - Parser to use: `:default`, `:fast`, or `:legacy` (default: `:default`)
+  - `:edition` - XML 1.0 edition (4 or 5, default: 5)
 
   ## Examples
 
@@ -121,6 +135,9 @@ defmodule FnXML.Parser do
 
       # Fast parsing
       events = FnXML.Parser.parse(xml, parser: :fast)
+
+      # Edition 4 parsing
+      events = FnXML.Parser.parse(xml, edition: 4)
   """
   def parse(source, opts \\ []) do
     stream(source, opts) |> Enum.to_list()

@@ -155,9 +155,9 @@ defmodule FnXML.SimpleFormTest do
         |> Enum.to_list()
 
       assert events == [
-               {:start_element, "root", [], nil},
-               {:characters, "text", nil},
-               {:end_element, "root"}
+               {:start_element, "root", [], 1, 0, 0},
+               {:characters, "text", 1, 0, 0},
+               {:end_element, "root", 1, 0, 0}
              ]
     end
 
@@ -168,11 +168,11 @@ defmodule FnXML.SimpleFormTest do
         |> Enum.to_list()
 
       assert events == [
-               {:start_element, "root", [], nil},
-               {:start_element, "child", [{"id", "1"}], nil},
-               {:characters, "value", nil},
-               {:end_element, "child"},
-               {:end_element, "root"}
+               {:start_element, "root", [], 1, 0, 0},
+               {:start_element, "child", [{"id", "1"}], 1, 0, 0},
+               {:characters, "value", 1, 0, 0},
+               {:end_element, "child", 1, 0, 0},
+               {:end_element, "root", 1, 0, 0}
              ]
     end
 
@@ -230,10 +230,10 @@ defmodule FnXML.SimpleFormTest do
         |> Enum.to_list()
 
       assert events == [
-               {:start_element, "a", [], nil},
-               {:end_element, "a"},
-               {:start_element, "b", [], nil},
-               {:end_element, "b"}
+               {:start_element, "a", [], 1, 0, 0},
+               {:end_element, "a", 1, 0, 0},
+               {:start_element, "b", [], 1, 0, 0},
+               {:end_element, "b", 1, 0, 0}
              ]
     end
   end

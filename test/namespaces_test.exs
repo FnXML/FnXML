@@ -162,45 +162,45 @@ defmodule FnXML.NamespacesTest do
       xml = ~s(<root xmlns="http://example.org"><child/></root>)
       events = FnXML.Parser.parse(xml) |> Namespaces.resolve() |> Enum.to_list()
 
-      start_events = Enum.filter(events, &match?({:start_element, _, _, _}, &1))
+      start_events = Enum.filter(events, &match?({:start_element, _, _, _, _, _}, &1))
 
       # Find root element
       root_event =
-        Enum.find(start_events, fn {:start_element, name, _, _} ->
+        Enum.find(start_events, fn {:start_element, name, _, _, _, _} ->
           case name do
             {_, "root"} -> true
             _ -> false
           end
         end)
 
-      assert {:start_element, {"http://example.org", "root"}, _, _} = root_event
+      assert {:start_element, {"http://example.org", "root"}, _, _, _, _} = root_event
 
       # Find child element
       child_event =
-        Enum.find(start_events, fn {:start_element, name, _, _} ->
+        Enum.find(start_events, fn {:start_element, name, _, _, _, _} ->
           case name do
             {_, "child"} -> true
             _ -> false
           end
         end)
 
-      assert {:start_element, {"http://example.org", "child"}, _, _} = child_event
+      assert {:start_element, {"http://example.org", "child"}, _, _, _, _} = child_event
     end
 
     test "resolves prefixed namespace" do
       xml = ~s(<ns:root xmlns:ns="http://example.org"/>)
       events = FnXML.Parser.parse(xml) |> Namespaces.resolve() |> Enum.to_list()
 
-      start_event = Enum.find(events, &match?({:start_element, _, _, _}, &1))
-      assert {:start_element, {"http://example.org", "root"}, _, _} = start_event
+      start_event = Enum.find(events, &match?({:start_element, _, _, _, _, _}, &1))
+      assert {:start_element, {"http://example.org", "root"}, _, _, _, _} = start_event
     end
 
     test "unprefixed element without default namespace has nil URI" do
       xml = ~s(<root/>)
       events = FnXML.Parser.parse(xml) |> Namespaces.resolve() |> Enum.to_list()
 
-      start_event = Enum.find(events, &match?({:start_element, _, _, _}, &1))
-      assert {:start_element, {nil, "root"}, _, _} = start_event
+      start_event = Enum.find(events, &match?({:start_element, _, _, _, _, _}, &1))
+      assert {:start_element, {nil, "root"}, _, _, _, _} = start_event
     end
   end
 
@@ -219,11 +219,11 @@ defmodule FnXML.NamespacesTest do
       # Should have resolved names
       start_event =
         Enum.find(events, fn
-          {:start_element, {_, "root"}, _, _} -> true
+          {:start_element, {_, "root"}, _, _, _, _} -> true
           _ -> false
         end)
 
-      assert {:start_element, {"http://example.org", "root"}, _, _} = start_event
+      assert {:start_element, {"http://example.org", "root"}, _, _, _, _} = start_event
     end
 
     test "includes validation errors in output" do
@@ -244,7 +244,7 @@ defmodule FnXML.NamespacesTest do
     end
 
     test "returns false for other events" do
-      assert Namespaces.ns_error?({:start_element, "tag", [], nil}) == false
+      assert Namespaces.ns_error?({:start_element, "tag", [], 1, 0, 0}) == false
       assert Namespaces.ns_error?(:other) == false
     end
   end
@@ -252,9 +252,9 @@ defmodule FnXML.NamespacesTest do
   describe "errors/1" do
     test "extracts error events from list" do
       events = [
-        {:start_element, "tag", [], nil},
+        {:start_element, "tag", [], 1, 0, 0},
         {:ns_error, :reason1, "name1", {1, 0, 0}},
-        {:characters, "text", nil},
+        {:characters, "text", 1, 0, 5},
         {:ns_error, :reason2, "name2", {2, 0, 0}}
       ]
 
@@ -263,7 +263,7 @@ defmodule FnXML.NamespacesTest do
     end
 
     test "returns empty list when no errors" do
-      events = [{:start_element, "tag", [], nil}, {:end_element, "tag"}]
+      events = [{:start_element, "tag", [], 1, 0, 0}, {:end_element, "tag", 1, 0, 10}]
       assert Namespaces.errors(events) == []
     end
   end
@@ -275,7 +275,7 @@ defmodule FnXML.NamespacesTest do
     end
 
     test "returns false when no errors" do
-      events = [{:start_element, "tag", [], nil}]
+      events = [{:start_element, "tag", [], 1, 0, 0}]
       assert Namespaces.errors?(events) == false
     end
   end

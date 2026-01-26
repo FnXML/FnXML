@@ -163,6 +163,85 @@ defmodule FnXML do
   end
 
   @doc """
+  Parse XML with full validation pipeline for strict XML 1.0 compliance.
+
+  This function applies comprehensive validation checks including:
+  - Well-formedness constraints (tag matching, unique attributes)
+  - Comment validation (no '--' within comments)
+  - Namespace validation (proper prefix declarations)
+
+  For most use cases, the standard `parse/1` or `parse_stream/1` functions
+  are sufficient. Use this function when you need strict XML 1.0 conformance
+  or when validating untrusted XML input.
+
+  ## Parameters
+
+  - `xml` - The XML document as a binary string
+  - `opts` - Options (optional)
+    - `:halt_on_error` - Stop on first error (default: false)
+    - `:validate_namespaces` - Enable namespace validation (default: true)
+
+  ## Returns
+
+  A list of event tuples with validation errors included as `{:error, ...}` events.
+
+  ## Examples
+
+      # Strict validation
+      case FnXML.parse_compliant(xml) do
+        {:ok, events} ->
+          # All validation passed
+          process_events(events)
+        {:error, errors} ->
+          # Validation failures detected
+          report_errors(errors)
+      end
+
+      # Get events with errors inline (don't check)
+      events = FnXML.parse_compliant(xml, check: false)
+
+  """
+  @spec parse_compliant(binary(), keyword()) :: {:ok, [tuple()]} | {:error, [tuple()]} | [tuple()]
+  def parse_compliant(xml, opts \\ []) when is_binary(xml) do
+    halt? = Keyword.get(opts, :halt_on_error, false)
+    validate_ns? = Keyword.get(opts, :validate_namespaces, true)
+    check? = Keyword.get(opts, :check, true)
+    on_error = Keyword.get(opts, :on_error, :emit)
+
+    stream =
+      xml
+      |> FnXML.Parser.stream()
+      |> FnXML.Validate.characters(on_error: on_error)
+      |> FnXML.Validate.character_references(on_error: on_error)
+      |> FnXML.Validate.xml_declaration(on_error: on_error)
+      |> FnXML.Validate.processing_instructions(on_error: on_error)
+      |> FnXML.Validate.well_formed(on_error: on_error)
+      |> FnXML.Validate.root_boundary(on_error: on_error)
+      |> FnXML.Validate.attributes(on_error: on_error)
+      |> FnXML.Validate.comments(on_error: on_error)
+
+    stream = if validate_ns? do
+      stream |> FnXML.Validate.namespaces(on_error: on_error)
+    else
+      stream
+    end
+
+    stream = if halt? do
+      stream |> halt_on_error()
+    else
+      stream
+    end
+
+    events = Enum.to_list(stream)
+
+    if check? do
+      check_errors(events)
+    else
+      events
+    end
+  end
+
+  @doc """
   Halt the stream when an error event is encountered.
 
   When an `{:error, type, message, line, ls, pos}` event is seen, the stream
