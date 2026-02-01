@@ -453,7 +453,8 @@ defmodule Mix.Tasks.Conformance.Xml do
           |> FnXML.Event.Validate.attributes()
           |> FnXML.Event.Validate.comments()
           |> FnXML.Event.Validate.processing_instructions()
-          |> FnXML.Event.Validate.namespaces()
+          # Namespace validation is conditional - handled by maybe_validate_namespaces below
+          # based on test.namespace (NAMESPACE attribute in test catalog)
           |> FnXML.DTD.parse_model()
           # Validate character references are well-formed
           |> FnXML.Event.Validate.character_references()
