@@ -445,10 +445,16 @@ defmodule Mix.Tasks.Conformance.Xml do
           |> wrap_as_list()
           |> parser.stream()
           |> wrap_with_document_events()
-          |> FnXML.Event.Validate.compliant()
-          |> FnXML.Event.Validate.root_boundary()
-          # Validate XML declaration attributes and values
+          # Use individual validation steps instead of compliant() to avoid
+          # entity_references_streaming() which doesn't handle external DTDs
           |> FnXML.Event.Validate.xml_declaration()
+          |> FnXML.Event.Validate.well_formed()
+          |> FnXML.Event.Validate.root_boundary()
+          |> FnXML.Event.Validate.attributes()
+          |> FnXML.Event.Validate.comments()
+          |> FnXML.Event.Validate.processing_instructions()
+          |> FnXML.Event.Validate.namespaces()
+          |> FnXML.DTD.parse_model()
           # Validate character references are well-formed
           |> FnXML.Event.Validate.character_references()
           # Validate entity references are defined (predefined or DTD-declared)
