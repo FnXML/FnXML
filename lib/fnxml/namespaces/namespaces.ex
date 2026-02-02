@@ -268,7 +268,13 @@ defmodule FnXML.Namespaces do
   end
 
   # End element - pop context
-  defp track_event({:end_element, _tag, _line, _ls, _pos} = event, ctx, false, _only_changes, _strip) do
+  defp track_event(
+         {:end_element, _tag, _line, _ls, _pos} = event,
+         ctx,
+         false,
+         _only_changes,
+         _strip
+       ) do
     new_ctx = Context.pop(ctx)
     {[event], {new_ctx, false}}
   end

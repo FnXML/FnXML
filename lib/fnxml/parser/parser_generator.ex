@@ -4672,6 +4672,38 @@ defmodule FnXML.Parser.Generator do
         )
       end
 
+      # HTML mode: > at depth 1 while inside a quoted string = unterminated string
+      # Only trigger when at the outermost level (dtd_depth=1) to avoid catching
+      # valid > characters inside quoted strings in internal subsets
+      if @mode == :html do
+        defp parse_doctype(
+               events,
+               <<">", rest::binary>>,
+               xml,
+               buf_pos,
+               abs_pos,
+               line,
+               ls,
+               el_line,
+               el_ls,
+               el_abs_pos,
+               start,
+               1 = _dtd_depth,
+               quote,
+               _elem_start
+             )
+             when quote != nil do
+          # Quote is open but we hit > at outermost level - this is an error in HTML mode
+          # Emit what we have and continue
+          content = binary_part(xml, start, buf_pos - start)
+
+          events
+          |> new_event(:dtd, content, el_line, el_ls, el_abs_pos)
+          |> error(:unterminated_doctype_string, <<quote>>, line, ls, abs_pos)
+          |> parse_content(rest, xml, buf_pos + 1, abs_pos + 1, line, ls)
+        end
+      end
+
       defp parse_doctype(
              events,
              <<">", rest::binary>>,
@@ -4843,6 +4875,42 @@ defmodule FnXML.Parser.Generator do
         )
       end
 
+      # HTML mode: closing double quote - validate next character
+      if @mode == :html do
+        defp parse_doctype(
+               events,
+               <<"\"", rest::binary>>,
+               xml,
+               buf_pos,
+               abs_pos,
+               line,
+               ls,
+               el_line,
+               el_ls,
+               el_abs_pos,
+               start,
+               dtd_depth,
+               ?",
+               elem_start
+             ) do
+          parse_doctype_after_quote(
+            events,
+            rest,
+            xml,
+            buf_pos + 1,
+            abs_pos + 1,
+            line,
+            ls,
+            el_line,
+            el_ls,
+            el_abs_pos,
+            start,
+            dtd_depth,
+            elem_start
+          )
+        end
+      end
+
       defp parse_doctype(
              events,
              <<"\"", rest::binary>>,
@@ -4909,6 +4977,42 @@ defmodule FnXML.Parser.Generator do
           ?',
           elem_start
         )
+      end
+
+      # HTML mode: closing single quote - validate next character
+      if @mode == :html do
+        defp parse_doctype(
+               events,
+               <<"'", rest::binary>>,
+               xml,
+               buf_pos,
+               abs_pos,
+               line,
+               ls,
+               el_line,
+               el_ls,
+               el_abs_pos,
+               start,
+               dtd_depth,
+               ?',
+               elem_start
+             ) do
+          parse_doctype_after_quote(
+            events,
+            rest,
+            xml,
+            buf_pos + 1,
+            abs_pos + 1,
+            line,
+            ls,
+            el_line,
+            el_ls,
+            el_abs_pos,
+            start,
+            dtd_depth,
+            elem_start
+          )
+        end
       end
 
       defp parse_doctype(
@@ -5079,6 +5183,128 @@ defmodule FnXML.Parser.Generator do
           )
 
         complete(events, line, ls, abs_pos)
+      end
+
+      # ============================================================================
+      # HTML mode: DOCTYPE After Quote Validation
+      # ============================================================================
+
+      # HTML mode: After closing a quoted identifier, validate next char
+      if @mode == :html do
+        # Valid continuation characters - return to normal DOCTYPE parsing
+        defp parse_doctype_after_quote(
+               events,
+               <<c, _rest::binary>> = binary,
+               xml,
+               buf_pos,
+               abs_pos,
+               line,
+               ls,
+               el_line,
+               el_ls,
+               el_abs_pos,
+               start,
+               dtd_depth,
+               elem_start
+             )
+             when c in [?\s, ?\t, ?\n, ?\r, ?>, ?", ?', ?[, ?], ?<] do
+          # Valid continuation - continue normal DOCTYPE parsing
+          parse_doctype(
+            events,
+            binary,
+            xml,
+            buf_pos,
+            abs_pos,
+            line,
+            ls,
+            el_line,
+            el_ls,
+            el_abs_pos,
+            start,
+            dtd_depth,
+            nil,
+            elem_start
+          )
+        end
+
+        # Empty buffer - need more data
+        defp parse_doctype_after_quote(
+               events,
+               <<>>,
+               _xml,
+               _buf_pos,
+               abs_pos,
+               line,
+               ls,
+               _el_line,
+               _el_ls,
+               _el_abs_pos,
+               _start,
+               _dtd_depth,
+               elem_start
+             ) do
+          incomplete(events, elem_start, line, ls, abs_pos)
+        end
+
+        # Invalid character - enter bogus DOCTYPE mode
+        defp parse_doctype_after_quote(
+               events,
+               <<c, rest::binary>>,
+               xml,
+               buf_pos,
+               abs_pos,
+               line,
+               ls,
+               el_line,
+               el_ls,
+               el_abs_pos,
+               start,
+               _dtd_depth,
+               _elem_start
+             ) do
+          # Invalid character after closing quote - emit what we have and scan to >
+          content = binary_part(xml, start, buf_pos - start)
+
+          events
+          |> new_event(:dtd, content, el_line, el_ls, el_abs_pos)
+          |> error(:unexpected_char_in_doctype, <<c>>, line, ls, abs_pos)
+          |> scan_to_doctype_close(rest, xml, buf_pos + 1, abs_pos + 1, line, ls)
+        end
+
+        # Scan to DOCTYPE close (bogus mode) - consume until >
+        defp scan_to_doctype_close(events, <<">", rest::binary>>, xml, buf_pos, abs_pos, line, ls) do
+          parse_content(events, rest, xml, buf_pos + 1, abs_pos + 1, line, ls)
+        end
+
+        defp scan_to_doctype_close(
+               events,
+               <<?\n, rest::binary>>,
+               xml,
+               buf_pos,
+               abs_pos,
+               line,
+               _ls
+             ) do
+          scan_to_doctype_close(
+            events,
+            rest,
+            xml,
+            buf_pos + 1,
+            abs_pos + 1,
+            line + 1,
+            abs_pos + 1
+          )
+        end
+
+        defp scan_to_doctype_close(events, <<_, rest::binary>>, xml, buf_pos, abs_pos, line, ls) do
+          scan_to_doctype_close(events, rest, xml, buf_pos + 1, abs_pos + 1, line, ls)
+        end
+
+        defp scan_to_doctype_close(events, <<>>, _xml, _buf_pos, abs_pos, line, ls) do
+          # Empty buffer while scanning - need more data
+          # Since we already emitted the DTD, just mark incomplete at current position
+          incomplete(events, abs_pos, line, ls, abs_pos)
+        end
       end
 
       # ============================================================================
