@@ -438,7 +438,8 @@ defmodule FnXML.NamespacesTest do
     test "strip_declarations option removes xmlns attrs" do
       xml = ~s(<root xmlns="http://example.org" id="1"/>)
 
-      events = FnXML.Parser.parse(xml) |> Namespaces.track(strip_declarations: true) |> Enum.to_list()
+      events =
+        FnXML.Parser.parse(xml) |> Namespaces.track(strip_declarations: true) |> Enum.to_list()
 
       # Find start element
       {:start_element, "root", attrs, _, _, _} =
