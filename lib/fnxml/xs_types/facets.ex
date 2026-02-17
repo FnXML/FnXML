@@ -104,39 +104,54 @@ defmodule FnXML.XsTypes.Facets do
   # ============================================================================
 
   defp validate_facet(value, type, {:length, expected}) do
-    actual = get_length(value, type)
-
-    if actual == expected do
+    # QName and NOTATION don't support length facets per XSD spec §4.3.1
+    if type in [:QName, :NOTATION] do
       :ok
     else
-      {:error, {:facet_violation, :length, [expected: expected, got: actual]}}
+      actual = get_length(value, type)
+
+      if actual == expected do
+        :ok
+      else
+        {:error, {:facet_violation, :length, [expected: expected, got: actual]}}
+      end
     end
   end
 
   defp validate_facet(value, type, {:minLength, min}) do
-    actual = get_length(value, type)
-
-    if actual >= min do
+    # QName and NOTATION don't support length facets per XSD spec §4.3.1
+    if type in [:QName, :NOTATION] do
       :ok
     else
-      {:error, {:facet_violation, :minLength, [expected: min, got: actual]}}
+      actual = get_length(value, type)
+
+      if actual >= min do
+        :ok
+      else
+        {:error, {:facet_violation, :minLength, [expected: min, got: actual]}}
+      end
     end
   end
 
   defp validate_facet(value, type, {:maxLength, max}) do
-    actual = get_length(value, type)
-
-    if actual <= max do
+    # QName and NOTATION don't support length facets per XSD spec §4.3.1
+    if type in [:QName, :NOTATION] do
       :ok
     else
-      {:error, {:facet_violation, :maxLength, [expected: max, got: actual]}}
+      actual = get_length(value, type)
+
+      if actual <= max do
+        :ok
+      else
+        {:error, {:facet_violation, :maxLength, [expected: max, got: actual]}}
+      end
     end
   end
 
   defp validate_facet(value, _type, {:pattern, pattern}) do
     pcre_pattern = xsd_pattern_to_pcre(pattern)
 
-    case Regex.compile("^#{pcre_pattern}$") do
+    case Regex.compile("^#{pcre_pattern}$", "u") do
       {:ok, regex} ->
         if Regex.match?(regex, value) do
           :ok
@@ -423,11 +438,295 @@ defmodule FnXML.XsTypes.Facets do
   # XSD Pattern Conversion
   # ============================================================================
 
+  # XSD multi-character escape inner ranges (without surrounding [])
+  @xsd_i_inner "_:A-Za-z\\xC0-\\xD6\\xD8-\\xF6\\xF8-\\xFF"
+  @xsd_c_inner "\\-._:A-Za-z0-9\\xB7\\xC0-\\xD6\\xD8-\\xF6\\xF8-\\xFF"
+
+  # XSD \d = all Unicode decimal digits (\p{Nd}), NOT just ASCII 0-9
+  # XSD \w = [#x0000-#xFFFF]-[\p{P}\p{Z}\p{C}] = letters, marks, numbers, symbols
+  # XSD \s = [#x20\t\n\r] (narrower than PCRE's \s which also includes \f and \v)
+  @xsd_d_inner "\\p{Nd}"
+  @xsd_w_inner "\\p{L}\\p{M}\\p{N}\\p{S}"
+  @xsd_s_inner "\\x20\\x09\\x0A\\x0D"
+
+  # XSD Unicode block name -> codepoint range (Unicode 3.1 blocks used by XSD 1.0)
+  @xsd_unicode_blocks %{
+    "BasicLatin" => {0x0000, 0x007F},
+    "Latin-1Supplement" => {0x0080, 0x00FF},
+    "LatinExtended-A" => {0x0100, 0x017F},
+    "LatinExtended-B" => {0x0180, 0x024F},
+    "IPAExtensions" => {0x0250, 0x02AF},
+    "SpacingModifierLetters" => {0x02B0, 0x02FF},
+    "CombiningDiacriticalMarks" => {0x0300, 0x036F},
+    "Greek" => {0x0370, 0x03FF},
+    "GreekExtended" => {0x1F00, 0x1FFF},
+    "Cyrillic" => {0x0400, 0x04FF},
+    "Armenian" => {0x0530, 0x058F},
+    "Hebrew" => {0x0590, 0x05FF},
+    "Arabic" => {0x0600, 0x06FF},
+    "Syriac" => {0x0700, 0x074F},
+    "Thaana" => {0x0780, 0x07BF},
+    "Devanagari" => {0x0900, 0x097F},
+    "Bengali" => {0x0980, 0x09FF},
+    "Gurmukhi" => {0x0A00, 0x0A7F},
+    "Gujarati" => {0x0A80, 0x0AFF},
+    "Oriya" => {0x0B00, 0x0B7F},
+    "Tamil" => {0x0B80, 0x0BFF},
+    "Telugu" => {0x0C00, 0x0C7F},
+    "Kannada" => {0x0C80, 0x0CFF},
+    "Malayalam" => {0x0D00, 0x0D7F},
+    "Sinhala" => {0x0D80, 0x0DFF},
+    "Thai" => {0x0E00, 0x0E7F},
+    "Lao" => {0x0E80, 0x0EFF},
+    "Tibetan" => {0x0F00, 0x0FFF},
+    "Myanmar" => {0x1000, 0x109F},
+    "Georgian" => {0x10A0, 0x10FF},
+    "HangulJamo" => {0x1100, 0x11FF},
+    "Ethiopic" => {0x1200, 0x137F},
+    "Cherokee" => {0x13A0, 0x13FF},
+    "UnifiedCanadianAboriginalSyllabics" => {0x1400, 0x167F},
+    "Ogham" => {0x1680, 0x169F},
+    "Runic" => {0x16A0, 0x16FF},
+    "Khmer" => {0x1780, 0x17FF},
+    "Mongolian" => {0x1800, 0x18AF},
+    "LatinExtendedAdditional" => {0x1E00, 0x1EFF},
+    "GeneralPunctuation" => {0x2000, 0x206F},
+    "SuperscriptsandSubscripts" => {0x2070, 0x209F},
+    "CurrencySymbols" => {0x20A0, 0x20CF},
+    "CombiningMarksforSymbols" => {0x20D0, 0x20FF},
+    "LetterlikeSymbols" => {0x2100, 0x214F},
+    "NumberForms" => {0x2150, 0x218F},
+    "Arrows" => {0x2190, 0x21FF},
+    "MathematicalOperators" => {0x2200, 0x22FF},
+    "MiscellaneousTechnical" => {0x2300, 0x23FF},
+    "ControlPictures" => {0x2400, 0x243F},
+    "OpticalCharacterRecognition" => {0x2440, 0x245F},
+    "EnclosedAlphanumerics" => {0x2460, 0x24FF},
+    "BoxDrawing" => {0x2500, 0x257F},
+    "BlockElements" => {0x2580, 0x259F},
+    "GeometricShapes" => {0x25A0, 0x25FF},
+    "MiscellaneousSymbols" => {0x2600, 0x26FF},
+    "Dingbats" => {0x2700, 0x27BF},
+    "BraillePatterns" => {0x2800, 0x28FF},
+    "CJKRadicalsSupplement" => {0x2E80, 0x2EFF},
+    "KangxiRadicals" => {0x2F00, 0x2FDF},
+    "IdeographicDescriptionCharacters" => {0x2FF0, 0x2FFF},
+    "CJKSymbolsandPunctuation" => {0x3000, 0x303F},
+    "Hiragana" => {0x3040, 0x309F},
+    "Katakana" => {0x30A0, 0x30FF},
+    "Bopomofo" => {0x3100, 0x312F},
+    "HangulCompatibilityJamo" => {0x3130, 0x318F},
+    "Kanbun" => {0x3190, 0x319F},
+    "BopomofoExtended" => {0x31A0, 0x31BF},
+    "EnclosedCJKLettersandMonths" => {0x3200, 0x32FF},
+    "CJKCompatibility" => {0x3300, 0x33FF},
+    "CJKUnifiedIdeographsExtensionA" => {0x3400, 0x4DBF},
+    "CJKUnifiedIdeographs" => {0x4E00, 0x9FFF},
+    "YiSyllables" => {0xA000, 0xA48F},
+    "YiRadicals" => {0xA490, 0xA4CF},
+    "HangulSyllables" => {0xAC00, 0xD7AF},
+    "HighSurrogates" => {0xD800, 0xDB7F},
+    "LowSurrogates" => {0xDC00, 0xDFFF},
+    "PrivateUse" => {0xE000, 0xF8FF},
+    "CJKCompatibilityIdeographs" => {0xF900, 0xFAFF},
+    "AlphabeticPresentationForms" => {0xFB00, 0xFB4F},
+    "HalfwidthandFullwidthForms" => {0xFF00, 0xFFEF},
+    "Specials" => {0xFFF0, 0xFFFD},
+    "SmallFormVariants" => {0xFE50, 0xFE6F},
+    "CombiningHalfMarks" => {0xFE20, 0xFE2F},
+    "CJKCompatibilityForms" => {0xFE30, 0xFE4F},
+    "OldItalic" => {0x10300, 0x1032F},
+    "Gothic" => {0x10330, 0x1034F},
+    "Deseret" => {0x10400, 0x1044F},
+    "ByzantineMusicalSymbols" => {0x1D000, 0x1D0FF},
+    "MusicalSymbols" => {0x1D100, 0x1D1FF},
+    "MathematicalAlphanumericSymbols" => {0x1D400, 0x1D7FF},
+    "CJKCompatibilityIdeographsSupplement" => {0x2F800, 0x2FA1F},
+    "Tags" => {0xE0000, 0xE007F}
+  }
+
   defp xsd_pattern_to_pcre(pattern) do
     pattern
-    |> String.replace("\\i", "[_:A-Za-z\\xC0-\\xD6\\xD8-\\xF6\\xF8-\\xFF]")
-    |> String.replace("\\I", "[^_:A-Za-z\\xC0-\\xD6\\xD8-\\xF6\\xF8-\\xFF]")
-    |> String.replace("\\c", "[-._:A-Za-z0-9\\xB7\\xC0-\\xD6\\xD8-\\xF6\\xF8-\\xFF]")
-    |> String.replace("\\C", "[^-._:A-Za-z0-9\\xB7\\xC0-\\xD6\\xD8-\\xF6\\xF8-\\xFF]")
+    |> translate_char_class_subtraction()
+    |> translate_xsd_char_classes()
+    |> translate_xsd_standalone_escapes()
+    |> translate_standalone_unicode_blocks()
+  end
+
+  # XSD character class subtraction: [BASE-[SUB]] → (?:(?![SUB])[BASE])
+  # Must run before other translations since they can't handle nested brackets.
+  defp translate_char_class_subtraction(pattern), do: do_translate_ccs(pattern, "")
+
+  defp do_translate_ccs("", acc), do: acc
+
+  defp do_translate_ccs(<<?\\, c, rest::binary>>, acc) do
+    do_translate_ccs(rest, <<acc::binary, ?\\, c>>)
+  end
+
+  defp do_translate_ccs(<<?[, rest::binary>>, acc) do
+    {negated, rest} =
+      case rest do
+        <<?^, r::binary>> -> {true, r}
+        r -> {false, r}
+      end
+
+    case scan_ccs_body(rest, "") do
+      {:subtraction, base, sub_str, rest2} ->
+        processed_sub = translate_char_class_subtraction(sub_str)
+        neg = if negated, do: "^", else: ""
+        replacement = "(?:(?!#{processed_sub})[#{neg}#{base}])"
+        do_translate_ccs(rest2, acc <> replacement)
+
+      {:simple, body, rest2} ->
+        neg = if negated, do: "^", else: ""
+        do_translate_ccs(rest2, acc <> "[" <> neg <> body <> "]")
+    end
+  end
+
+  defp do_translate_ccs(<<c::utf8, rest::binary>>, acc) do
+    do_translate_ccs(rest, <<acc::binary, c::utf8>>)
+  end
+
+  # Scan character class body looking for subtraction (-[...]) or closing ]
+  defp scan_ccs_body(<<?], rest::binary>>, acc), do: {:simple, acc, rest}
+
+  defp scan_ccs_body(<<?-, ?[, rest::binary>>, acc) do
+    case scan_ccs_nested(rest, "", 1) do
+      {:ok, inner, <<?], rest2::binary>>} ->
+        {:subtraction, acc, "[" <> inner <> "]", rest2}
+
+      {:ok, inner, rest2} ->
+        scan_ccs_body(rest2, acc <> "-[" <> inner <> "]")
+
+      :error ->
+        scan_ccs_body(rest, acc <> "-[")
+    end
+  end
+
+  defp scan_ccs_body(<<?\\, c, rest::binary>>, acc) do
+    scan_ccs_body(rest, <<acc::binary, ?\\, c>>)
+  end
+
+  defp scan_ccs_body(<<c::utf8, rest::binary>>, acc) do
+    scan_ccs_body(rest, <<acc::binary, c::utf8>>)
+  end
+
+  defp scan_ccs_body("", acc), do: {:simple, acc, ""}
+
+  # Scan nested brackets tracking depth to find matching ]
+  defp scan_ccs_nested(<<?], rest::binary>>, acc, 1), do: {:ok, acc, rest}
+
+  defp scan_ccs_nested(<<?], rest::binary>>, acc, depth) do
+    scan_ccs_nested(rest, acc <> "]", depth - 1)
+  end
+
+  defp scan_ccs_nested(<<?[, rest::binary>>, acc, depth) do
+    scan_ccs_nested(rest, acc <> "[", depth + 1)
+  end
+
+  defp scan_ccs_nested(<<?\\, c, rest::binary>>, acc, depth) do
+    scan_ccs_nested(rest, <<acc::binary, ?\\, c>>, depth)
+  end
+
+  defp scan_ccs_nested(<<c::utf8, rest::binary>>, acc, depth) do
+    scan_ccs_nested(rest, <<acc::binary, c::utf8>>, depth)
+  end
+
+  defp scan_ccs_nested("", _acc, _depth), do: :error
+
+  # Convert a block name to a PCRE hex range string (without brackets)
+  defp block_to_range(block_name) do
+    case Map.get(@xsd_unicode_blocks, block_name) do
+      {start, stop} ->
+        {:ok, "\\x{#{Integer.to_string(start, 16)}}-\\x{#{Integer.to_string(stop, 16)}}"}
+
+      nil ->
+        :error
+    end
+  end
+
+  # Convert \P{IsXxx} (negative block) to complement ranges for use inside char classes
+  defp block_to_complement_range(block_name) do
+    case Map.get(@xsd_unicode_blocks, block_name) do
+      {start, stop} ->
+        parts =
+          (if start > 0, do: ["\\x{0}-\\x{#{Integer.to_string(start - 1, 16)}}"], else: []) ++
+            if stop < 0x10FFFF,
+              do: ["\\x{#{Integer.to_string(stop + 1, 16)}}-\\x{10FFFF}"],
+              else: []
+
+        {:ok, Enum.join(parts)}
+
+      nil ->
+        :error
+    end
+  end
+
+  # Translate standalone \p{IsXxx} and \P{IsXxx} (outside character classes)
+  defp translate_standalone_unicode_blocks(pattern) do
+    Regex.replace(~r/\\([pP])\{Is([A-Za-z-]+)\}/, pattern, fn _full, type, block_name ->
+      case block_to_range(block_name) do
+        {:ok, range} ->
+          if type == "p", do: "[#{range}]", else: "[^#{range}]"
+
+        :error ->
+          "\\#{type}{Is#{block_name}}"
+      end
+    end)
+  end
+
+  # Process character classes [...] to expand XSD-specific escapes inside them.
+  # Translates \i, \I, \c, \C (XSD-only), \d, \D, \w, \W, \s (XSD Unicode semantics),
+  # and \p{IsBlockName}/\P{IsBlockName} (Unicode blocks).
+  defp translate_xsd_char_classes(pattern) do
+    Regex.replace(~r/\[([^\]]*)\]/, pattern, fn _full, inner ->
+      translated =
+        inner
+        |> String.replace("\\i", @xsd_i_inner)
+        |> String.replace("\\I", "^" <> @xsd_i_inner)
+        |> String.replace("\\c", @xsd_c_inner)
+        |> String.replace("\\C", "^" <> @xsd_c_inner)
+        |> String.replace("\\d", @xsd_d_inner)
+        |> String.replace("\\D", "\\P{Nd}")
+        |> String.replace("\\w", @xsd_w_inner)
+        |> String.replace("\\W", "\\p{P}\\p{Z}\\p{C}")
+        |> String.replace("\\s", @xsd_s_inner)
+        |> String.replace("\\S", "\\p{L}\\p{M}\\p{N}\\p{S}\\p{P}\\p{C}")
+        |> translate_blocks_in_char_class()
+
+      "[#{translated}]"
+    end)
+  end
+
+  # Handle \p{IsXxx} and \P{IsXxx} inside character classes (no wrapping brackets)
+  defp translate_blocks_in_char_class(inner) do
+    Regex.replace(~r/\\([pP])\{Is([A-Za-z-]+)\}/, inner, fn _full, type, block_name ->
+      if type == "p" do
+        case block_to_range(block_name) do
+          {:ok, range} -> range
+          :error -> "\\p{Is#{block_name}}"
+        end
+      else
+        case block_to_complement_range(block_name) do
+          {:ok, range} -> range
+          :error -> "\\P{Is#{block_name}}"
+        end
+      end
+    end)
+  end
+
+  # Replace standalone XSD-specific escapes (outside character classes) with bracketed ranges.
+  defp translate_xsd_standalone_escapes(pattern) do
+    pattern
+    |> String.replace("\\i", "[#{@xsd_i_inner}]")
+    |> String.replace("\\I", "[^#{@xsd_i_inner}]")
+    |> String.replace("\\c", "[#{@xsd_c_inner}]")
+    |> String.replace("\\C", "[^#{@xsd_c_inner}]")
+    |> String.replace("\\d", "\\p{Nd}")
+    |> String.replace("\\D", "\\P{Nd}")
+    |> String.replace("\\w", "[#{@xsd_w_inner}]")
+    |> String.replace("\\W", "[^#{@xsd_w_inner}]")
+    |> String.replace("\\s", "[#{@xsd_s_inner}]")
+    |> String.replace("\\S", "[^#{@xsd_s_inner}]")
   end
 end

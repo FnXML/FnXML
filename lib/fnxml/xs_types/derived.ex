@@ -122,8 +122,24 @@ defmodule FnXML.XsTypes.Derived do
   end
 
   defp validate_nmtoken(value) do
-    pattern = ~r/^[_\p{L}0-9.\-:]+$/u
-    validate_pattern(value, pattern, :NMTOKEN)
+    # NMTOKEN is (NameChar)+ - uses FnXML.Char for proper Edition 4 validation
+    if valid_nmtoken?(value) do
+      :ok
+    else
+      {:error, {:invalid_value, :NMTOKEN, value}}
+    end
+  end
+
+  defp valid_nmtoken?(""), do: false
+
+  defp valid_nmtoken?(<<c::utf8, rest::binary>>) do
+    FnXML.Char.name_char_ed4?(c) and valid_nmtoken_chars?(rest)
+  end
+
+  defp valid_nmtoken_chars?(<<>>), do: true
+
+  defp valid_nmtoken_chars?(<<c::utf8, rest::binary>>) do
+    FnXML.Char.name_char_ed4?(c) and valid_nmtoken_chars?(rest)
   end
 
   defp validate_nmtokens(value) do
@@ -138,13 +154,37 @@ defmodule FnXML.XsTypes.Derived do
   end
 
   defp validate_name(value) do
-    pattern = ~r/^[:_\p{L}][:_\p{L}0-9.\-]*$/u
-    validate_pattern(value, pattern, :Name)
+    # XML 1.0 Name uses FnXML.Char for proper Edition 4 character validation
+    if FnXML.Char.valid_name_ed4?(value) do
+      :ok
+    else
+      {:error, {:invalid_value, :Name, value}}
+    end
   end
 
   defp validate_ncname(value) do
-    pattern = ~r/^[_\p{L}][_\p{L}0-9.\-]*$/u
-    validate_pattern(value, pattern, :NCName)
+    # XML 1.0 NCName (Non-Colonized Name) - same as Name but without ':'
+    # Uses FnXML.Char for proper Edition 4 character validation
+    if valid_ncname?(value) do
+      :ok
+    else
+      {:error, {:invalid_value, :NCName, value}}
+    end
+  end
+
+  # NCName is like Name but without colons
+  defp valid_ncname?(""), do: false
+
+  defp valid_ncname?(<<first::utf8, rest::binary>>) do
+    # First character must be valid Name start char (not colon for NCName)
+    first != ?: and FnXML.Char.name_start_char_ed4?(first) and valid_ncname_chars?(rest)
+  end
+
+  defp valid_ncname_chars?(<<>>), do: true
+
+  defp valid_ncname_chars?(<<c::utf8, rest::binary>>) do
+    # Subsequent characters must be valid Name chars (not colon for NCName)
+    c != ?: and FnXML.Char.name_char_ed4?(c) and valid_ncname_chars?(rest)
   end
 
   defp validate_ncnames(value) do
