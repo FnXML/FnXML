@@ -44,3 +44,6 @@ erl_crash.dump
 
 # Zigler auto-generated files
 lib/**/.Elixir.*.zig
+
+# Downloaded conformance test suites
+priv/test_suites/

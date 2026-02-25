@@ -36,6 +36,7 @@ defmodule Mix.Tasks.Conformance.Xml do
       --limit N       Limit number of tests to run
       --suite PATH    Path to xmlconf test suite (default: searches common locations)
       --edition N     XML 1.0 edition to use: 4 or 5 (default: both)
+      --download      Download the test suite to priv/test_suites/xmlconf
   """
 
   use Mix.Task
@@ -57,7 +58,8 @@ defmodule Mix.Tasks.Conformance.Xml do
           quick: :boolean,
           limit: :integer,
           suite: :string,
-          edition: :integer
+          edition: :integer,
+          download: :boolean
         ],
         aliases: [
           s: :set,
@@ -66,33 +68,38 @@ defmodule Mix.Tasks.Conformance.Xml do
           v: :verbose,
           q: :quick,
           l: :limit,
-          e: :edition
+          e: :edition,
+          d: :download
         ]
       )
 
-    suite_path = find_test_suite(opts[:suite])
+    if opts[:download] do
+      download_suite()
+    else
+      suite_path = find_test_suite(opts[:suite])
 
-    case suite_path do
-      nil ->
-        Mix.shell().error("Could not find XML conformance test suite.")
+      case suite_path do
+        nil ->
+          Mix.shell().error("Could not find XML conformance test suite.")
 
-        Mix.shell().error(
-          "Please specify path with --suite or ensure xmlconf is in a standard location."
-        )
+          Mix.shell().error(
+            "Run `mix conformance.xml --download` or specify path with --suite."
+          )
 
-        System.halt(1)
+          System.halt(1)
 
-      path ->
-        Mix.shell().info("Using test suite at: #{path}")
+        path ->
+          Mix.shell().info("Using test suite at: #{path}")
 
-        # Determine which editions to test
-        editions =
-          case opts[:edition] do
-            nil -> [4, 5]
-            edition -> [edition]
-          end
+          # Determine which editions to test
+          editions =
+            case opts[:edition] do
+              nil -> [4, 5]
+              edition -> [edition]
+            end
 
-        run_tests_for_editions(path, editions, opts)
+          run_tests_for_editions(path, editions, opts)
+      end
     end
   end
 
@@ -111,6 +118,21 @@ defmodule Mix.Tasks.Conformance.Xml do
     # Print combined summary if testing multiple editions
     if length(editions) > 1 do
       print_combined_summary(all_edition_results)
+    end
+  end
+
+  defp download_suite do
+    alias FnXML.Conformance.TestSuite
+
+    if TestSuite.available?() do
+      IO.puts("Test suite already downloaded at: #{TestSuite.suite_path()}")
+    else
+      IO.puts("Downloading #{TestSuite.name()}...")
+
+      case TestSuite.download() do
+        :ok -> IO.puts("Download complete.")
+        {:error, reason} -> IO.puts("Download failed: #{inspect(reason)}")
+      end
     end
   end
 

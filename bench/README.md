@@ -1,5 +1,7 @@
 # FnXML Benchmark Results
 
+Take the benchmarks with a big grain of salt.  Mostly this was used to benchmark parser performance from one version to the next.  This was for the FnXML parser only, not including compliance modules, filters, etc.  Comparison to saxy, erlsom, xmerl should be done with your own real world task to see how each performs in that scenario.  Don't use this as your guide.
+
 Comprehensive benchmarks comparing FnXML parsers against other Elixir/Erlang XML libraries.
 
 ## Environment
