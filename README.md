@@ -11,12 +11,20 @@ FnXML is a pure Elixir XML processing library that parses XML into **lazy stream
 **Event streams are the basic format.** FnXML parses XML directly into Elixir Streams, which means **all Elixir stream tools work with XML**:
 
 ```elixir
-FnXML.Parser.parse(xml)
-|> Stream.filter(fn {:start_element, tag, _, _, _, _} -> tag == "book"; _ -> false end)
-|> Stream.take(10)                    # Take first 10 books
-|> Stream.map(&process_event/1)       # Transform events
-|> Stream.chunk_every(5)              # Batch processing
-|> Enum.reduce(acc, &reducer/2)       # Aggregate results
+File.stream!("data.xml")
+|> FnXML.preprocess()                      # Preprocess: UTF-16 + line endings
+|> FnXML.Parser.parse()                    # Parse XML to event stream
+|> FnXML.Event.Validate.compliant()        # Full XML 1.0 validation
+|> FnXML.Event.resolve()                   # Resolve DTD + namespaces
+|> FnXML.API.SAX.dispatch(Handler, state)
+```
+
+or if you aren't concerned with strict compliance:
+
+```elixir
+File.stream!("data.xml")
+|> FnXML.Parser.parse()                    # Parse XML to event stream
+|> FnXML.API.SAX.dispatch(Handler, state)
 ```
 
 This provides:
@@ -33,9 +41,9 @@ This provides:
 
 - **Pure Elixir** - No external dependencies, runs anywhere Elixir runs
 - **Streaming parser** - Process XML incrementally without loading entire document
-- **Macro-based performance** - Compile-time parser generation for optimal speed
 - **Constant memory** - Process multi-gigabyte files with O(1) memory usage
 - **Lazy evaluation** - Parse only what you consume, stop early when done
+- **XML APIs** - DOM, SAX, StAX APIs, or use elixir streams directly
 
 ### Component-Based Design
 
@@ -168,9 +176,9 @@ results = events
                             │  {:end_element, ...}                │
                             └──────────────────┬──────────────────┘
                                                │
-                       ┌───────────────────────┴───────────────────────┐
-                       │                                               │
-                       ▼                                               ▼
+                       ┌───────────────────────┴───────────────────┐
+                       │                                           │
+                       ▼                                           ▼
     ┌─────────────────────────────────────┐     ┌─────────────────────────────────────┐
     │      Elixir Stream Functions        │     │         FnXML Components            │
     │  Stream.filter • Stream.map         │     │  FnXML.Event.Filter                 │
@@ -246,7 +254,11 @@ File.stream!("huge.xml", [], 65_536)
 # Only the 100 matching records are kept in memory
 ```
 
-> **Note:** FnXML's core parser and built-in transforms maintain O(1) memory. However, some stream operations may buffer events—for example, grouping, summarization, or finding the last element in a group. Your overall memory usage depends on how you consume the stream.
+> **Note:** FnXML's core parser and built-in transforms maintain O(1)
+    memory. However, some stream operations may buffer events—for
+    example, grouping, summarization, or finding the last element in a
+    group. Your overall memory usage depends on how you consume the
+    stream.
 
 **2. Composable Transformations**
 
@@ -294,7 +306,7 @@ FnXML.Parser.parse(xml)
   Process.sleep(100)
 end)
 |> Stream.run()
-# Parser waits for each event to be processed before generating the next
+
 ```
 
 **5. Multiple API Styles**
@@ -551,27 +563,9 @@ parser.parse("<root/>")
 parser = FnXML.Parser.generate(4)
 ```
 
-### Saxy Compatibility
-
-For codebases using Saxy's SimpleForm format:
-
-```elixir
-# Decode XML to SimpleForm tuple
-{"root", attrs, children} = FnXML.Parser.parse("<root><child/></root>")
-                            |> FnXML.Event.SimpleForm.decode()
-
-# Encode SimpleForm back to XML
-xml = FnXML.Event.SimpleForm.encode({"root", [], ["text"]})
-      |> FnXML.Event.to_string()
-
-# Convert between SimpleForm and DOM
-elem = FnXML.Event.SimpleForm.to_dom({"root", [{"id", "1"}], ["text"]})
-tuple = FnXML.Event.SimpleForm.from_dom(elem)
-```
-
 ## XML Security
 
-> **Warning:** The XML Security module is still in development and has not undergone a security review. Treat this code as suspect and do not use it in production for security-critical operations until it has been properly audited.
+> **Caution:** The XML Security module is still in development and has not undergone a security review. Treat this code with caution and do not use it in production for security-critical operations.
 
 FnXML provides W3C-compliant XML Security support for canonicalization, signatures, and encryption.
 
@@ -601,7 +595,7 @@ private_key = :public_key.generate_key({:rsa, 2048, 65537})
 public_key = {:RSAPublicKey, n, e}
 
 # Sign a document (enveloped signature)
-{:ok, signed_xml} = FnXML.Security.Signature.sign(xml, private_key,
+  {:ok, signed_xml} = FnXML.Security.Signature.sign(xml, private_key,
   reference_uri: "",
   signature_algorithm: :rsa_sha256,
   digest_algorithm: :sha256,

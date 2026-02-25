@@ -650,7 +650,7 @@ defmodule FnXML.XsTypes.Facets do
     case Map.get(@xsd_unicode_blocks, block_name) do
       {start, stop} ->
         parts =
-          (if start > 0, do: ["\\x{0}-\\x{#{Integer.to_string(start - 1, 16)}}"], else: []) ++
+          if(start > 0, do: ["\\x{0}-\\x{#{Integer.to_string(start - 1, 16)}}"], else: []) ++
             if stop < 0x10FFFF,
               do: ["\\x{#{Integer.to_string(stop + 1, 16)}}-\\x{10FFFF}"],
               else: []
