@@ -47,3 +47,6 @@ lib/**/.Elixir.*.zig
 
 # Downloaded conformance test suites
 priv/test_suites/
+
+# Conformance test results
+results/
