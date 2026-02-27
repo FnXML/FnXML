@@ -670,6 +670,43 @@ FnXML implements the following W3C specifications:
 | [XML Signature Syntax and Processing](https://www.w3.org/TR/xmldsig-core1/) | 1.1 | In Development |
 | [XML Encryption Syntax and Processing](https://www.w3.org/TR/xmlenc-core1/) | 1.1 | In Development |
 
+## Conformance Testing
+
+FnXML includes a conformance test runner for the W3C/OASIS XML
+Conformance Test Suite (~2,000 tests). Tests validate both Edition 4
+(strict) and Edition 5 (permissive) parsers.
+
+```bash
+# Download the test suite
+mix conformance.xml.download
+
+# Run all tests (Edition 5 by default)
+mix conformance.xml
+
+# Test a specific edition
+mix conformance.xml --edition 4
+
+# Quick check (first 100 tests)
+mix conformance.xml --quick
+
+# Filter by test set or type
+mix conformance.xml --set xmltest
+mix conformance.xml --type valid
+
+# Parallel execution with verbose output
+mix conformance.xml --concurrency 8 --verbose
+
+# List available categories
+mix conformance.xml --categories
+
+# Check download status
+mix conformance.xml.download --status
+```
+
+The conformance runner implements the `FnConformance.Runner` behaviour
+and supports the Conformance Viewer (`mix conformance.viewer`) for
+interactive test inspection.
+
 ## License
 
 MIT
